@@ -1,8 +1,13 @@
+"""
+One-time script to generate PCRA path files and optional heuristic DSKRL
+auxiliary metadata files.
+"""
 import argparse
 import os
 import sys
 import time
 import random
+from collections import defaultdict
 
 def map_add(mp, key1, key2, value):
     if key1 not in mp:
@@ -10,12 +15,6 @@ def map_add(mp, key1, key2, value):
     if key2 not in mp[key1]:
         mp[key1][key2] = 0.0
     mp[key1][key2] += value
-
-
-def map_add1(mp, key):
-    if key not in mp:
-        mp[key] = 0
-    mp[key] += 1
 
 
 def parse_triple(line, order):
@@ -57,23 +56,170 @@ def build_relation_mapping(triples):
 
 def build_entity_mapping(triples):
     entity2id = {}
-    id2entity = {}
     for h, _, t in triples:
         if h not in entity2id:
             idx = len(entity2id)
             entity2id[h] = idx
-            id2entity[idx] = h
         if t not in entity2id:
             idx = len(entity2id)
             entity2id[t] = idx
-            id2entity[idx] = t
-    return entity2id, id2entity
+    return entity2id
 
 
-def write_mapping(path, mapping):
-    with open(path, "w") as f:
-        for k, v in mapping.items():
-            f.write(f"{k} {v}\n")
+def jaccard_similarity(a, b):
+    if not a and not b:
+        return 1.0
+    union = a | b
+    if not union:
+        return 0.0
+    return len(a & b) / len(union)
+
+
+def build_entity_relation_signatures(triples):
+    signatures = defaultdict(set)
+    for h, r, t in triples:
+        signatures[h].add(f"H::{r}")
+        signatures[t].add(f"T::{r}")
+    return signatures
+
+
+def cluster_relation_role_sets(role_to_items, prefix, threshold):
+    """
+    Cluster relation-role item sets with greedy Jaccard matching.
+
+    This is a heuristic fallback for datasets that do not ship explicit TKRL/DSKRL
+    type-domain metadata. It produces reusable labels across relations when their
+    observed argument sets look similar.
+    """
+    assignments = {}
+    cluster_unions = []
+    cluster_labels = []
+
+    for relation in sorted(role_to_items):
+        items = set(role_to_items[relation])
+        best_idx = None
+        best_score = -1.0
+        for idx, rep_items in enumerate(cluster_unions):
+            score = jaccard_similarity(items, rep_items)
+            if score > best_score:
+                best_score = score
+                best_idx = idx
+        if best_idx is not None and best_score >= threshold:
+            assignments[relation] = cluster_labels[best_idx]
+            cluster_unions[best_idx].update(items)
+        else:
+            cluster_idx = len(cluster_unions)
+            cluster_unions.append(set(items))
+            cluster_labels.append(f"{prefix}_{cluster_idx}")
+            assignments[relation] = cluster_labels[cluster_idx]
+    return assignments
+
+
+def write_label_id_file(path, labels):
+    with open(path, "w") as handle:
+        for idx, label in enumerate(labels):
+            handle.write(f"{label} {idx}\n")
+    print(f"Wrote: {path}")
+
+
+def generate_dskrl_aux_files(
+    dataset_dir,
+    train_triples,
+    relation2id,
+    domain_jaccard_threshold=0.2,
+    type_jaccard_threshold=0.5,
+):
+    """
+    Generate heuristic relationType.txt / relationDomain.txt plus their id files.
+
+    Domain labels are clustered from the observed sets of entities that appear in
+    a relation's head/tail position. Type labels are clustered from the structural
+    signatures of those entities, where a signature is the set of incident
+    relation-role tokens such as H::r or T::r.
+    """
+    relation_order = [rel for rel, _ in sorted(relation2id.items(), key=lambda x: x[1])]
+    head_entities = defaultdict(set)
+    tail_entities = defaultdict(set)
+    for h, r, t in train_triples:
+        head_entities[r].add(h)
+        tail_entities[r].add(t)
+
+    entity_signatures = build_entity_relation_signatures(train_triples)
+    head_signature_sets = {}
+    tail_signature_sets = {}
+    for rel in relation_order:
+        head_signature_sets[rel] = {
+            "|".join(sorted(entity_signatures[e])) if entity_signatures[e] else "__EMPTY__"
+            for e in head_entities.get(rel, set())
+        }
+        tail_signature_sets[rel] = {
+            "|".join(sorted(entity_signatures[e])) if entity_signatures[e] else "__EMPTY__"
+            for e in tail_entities.get(rel, set())
+        }
+
+    head_domain_labels = cluster_relation_role_sets(
+        head_entities,
+        prefix="head_domain",
+        threshold=domain_jaccard_threshold,
+    )
+    tail_domain_labels = cluster_relation_role_sets(
+        tail_entities,
+        prefix="tail_domain",
+        threshold=domain_jaccard_threshold,
+    )
+    head_type_labels = cluster_relation_role_sets(
+        head_signature_sets,
+        prefix="head_type",
+        threshold=type_jaccard_threshold,
+    )
+    tail_type_labels = cluster_relation_role_sets(
+        tail_signature_sets,
+        prefix="tail_type",
+        threshold=type_jaccard_threshold,
+    )
+
+    type_labels = sorted(set(head_type_labels.values()) | set(tail_type_labels.values()))
+    domain_labels = sorted(set(head_domain_labels.values()) | set(tail_domain_labels.values()))
+
+    relation_type_path = os.path.join(dataset_dir, "relationType.txt")
+    relation_domain_path = os.path.join(dataset_dir, "relationDomain.txt")
+    type_id_path = os.path.join(dataset_dir, "type2id.txt")
+    domain_id_path = os.path.join(dataset_dir, "domain2id.txt")
+
+    with open(relation_type_path, "w") as handle:
+        for rel in relation_order:
+            handle.write(f"{rel} {head_type_labels[rel]} {tail_type_labels[rel]}\n")
+    print(f"Wrote: {relation_type_path}")
+
+    with open(relation_domain_path, "w") as handle:
+        for rel in relation_order:
+            handle.write(f"{rel} {head_domain_labels[rel]} {tail_domain_labels[rel]}\n")
+    print(f"Wrote: {relation_domain_path}")
+
+    write_label_id_file(type_id_path, type_labels)
+    write_label_id_file(domain_id_path, domain_labels)
+
+    # Per-entity type list, supporting the paper's Eq. 2:
+    #   T_e = Σ_i α_i · T_{c_i}
+    # where i ranges over all (type, domain) pairs entity e participates in.
+    # The weight α_i is set to the normalised frequency of that pair across
+    # the entity's appearances (as head or tail) in the training graph.
+    entity_pair_counts = defaultdict(lambda: defaultdict(float))
+    for h, r, t in train_triples:
+        entity_pair_counts[h][(head_type_labels[r], head_domain_labels[r])] += 1.0
+        entity_pair_counts[t][(tail_type_labels[r], tail_domain_labels[r])] += 1.0
+
+    entity_types_path = os.path.join(dataset_dir, "entityTypes.txt")
+    with open(entity_types_path, "w") as handle:
+        for entity in sorted(entity_pair_counts.keys()):
+            pair_counts = entity_pair_counts[entity]
+            total = sum(pair_counts.values())
+            if total <= 0:
+                continue
+            for (type_label, domain_label), count in sorted(pair_counts.items()):
+                weight = count / total
+                handle.write(f"{entity} {type_label} {domain_label} {weight:.6f}\n")
+    print(f"Wrote: {entity_types_path}")
 
 
 def resolve_batch_dataset_dirs(batch_root, datasets, max_perturbation):
@@ -100,12 +246,9 @@ def resolve_batch_dataset_dirs(batch_root, datasets, max_perturbation):
 def generate_pra_for_dataset(args, dataset_dir):
     print(f"[PCRA] Processing dataset_dir={dataset_dir}")
     train_path = os.path.join(dataset_dir, "train.txt")
-    valid_path = os.path.join(dataset_dir, "valid.txt")
     test_path = os.path.join(dataset_dir, "test.txt")
-    e1e2_path = os.path.join(dataset_dir, "e1_e2.txt")
 
     train_triples = read_triples(train_path, args.triple_order)
-    valid_triples = read_triples(valid_path, args.triple_order)
     test_triples = read_triples(test_path, args.triple_order)
 
     if not train_triples:
@@ -116,11 +259,7 @@ def generate_pra_for_dataset(args, dataset_dir):
     for rid, rname in list(id2relation.items()):
         id2relation[rid + relation_num] = "~" + rname
 
-    entity2id, id2entity = build_entity_mapping(train_triples)
-
-    if args.write_mappings:
-        write_mapping(os.path.join(dataset_dir, "relation2id.txt"), relation2id)
-        write_mapping(os.path.join(dataset_dir, "entity2id.txt"), entity2id)
+    entity2id = build_entity_mapping(train_triples)
 
     ok = {}
     a = {}
@@ -152,17 +291,6 @@ def generate_pra_for_dataset(args, dataset_dir):
         ok.setdefault(f"{h} {t}", {})
         ok.setdefault(f"{t} {h}", {})
 
-    if os.path.exists(e1e2_path):
-        with open(e1e2_path, "r") as f:
-            for line in f:
-                seg = line.strip().split()
-                if len(seg) >= 2:
-                    ok[f"{seg[0]} {seg[1]}"] = {}
-                    ok[f"{seg[1]} {seg[0]}"] = {}
-
-    path_dict = {}
-    path_r_dict = {}
-    train_path = {}
     h_e_p = {}
 
     step = 0
@@ -175,9 +303,6 @@ def generate_pra_for_dataset(args, dataset_dir):
         for rel1 in a[e1]:
             e2_set = a[e1][rel1]
             for e2 in e2_set:
-                map_add1(path_dict, str(rel1))
-                for key in ok.get(f"{e1} {e2}", {}):
-                    map_add1(path_r_dict, f"{rel1}->{key}")
                 map_add(h_e_p, f"{e1} {e2}", str(rel1), 1.0 / len(e2_set))
 
         for rel1 in a[e1]:
@@ -187,10 +312,6 @@ def generate_pra_for_dataset(args, dataset_dir):
                     for rel2 in a[e2]:
                         e3_set = a[e2][rel2]
                         for e3 in e3_set:
-                            map_add1(path_dict, f"{rel1} {rel2}")
-                            if f"{e1} {e3}" in ok:
-                                for key in ok[f"{e1} {e3}"]:
-                                    map_add1(path_r_dict, f"{rel1} {rel2}->{key}")
                             if f"{e1} {e3}" in ok:
                                 map_add(
                                     h_e_p,
@@ -212,46 +333,8 @@ def generate_pra_for_dataset(args, dataset_dir):
                     bb[rel_path] /= sum_val
                     if bb[rel_path] > args.min_prob:
                         aa[rel_path] = bb[rel_path]
-                train_path.update({k: 1 for k in aa})
         print(path_num, time.time() - time1)
         sys.stdout.flush()
-
-    if args.write_path_stats:
-        path2_path = os.path.join(dataset_dir, "path2.txt")
-        with open(path2_path, "w") as g:
-            for e1 in a:
-                for e2 in a:
-                    if f"{e1} {e2}" in h_e_p:
-                        g.write(f"{e1} {e2}\n")
-                        bb = {}
-                        aa = {}
-                        sum_val = 0.0
-                        for rel_path in h_e_p[f"{e1} {e2}"]:
-                            bb[rel_path] = h_e_p[f"{e1} {e2}"][rel_path]
-                            sum_val += bb[rel_path]
-                        for rel_path in bb:
-                            bb[rel_path] /= sum_val
-                            if bb[rel_path] > args.min_prob:
-                                aa[rel_path] = bb[rel_path]
-                        g.write(str(len(aa)))
-                        for rel_path in aa:
-                            g.write(f" {len(rel_path.split())} {rel_path} {aa[rel_path]}")
-                        g.write("\n")
-
-        confidence_path = os.path.join(dataset_dir, "confidence.txt")
-        with open(confidence_path, "w") as g:
-            for rel_path in train_path:
-                out = []
-                for i in range(relation_num):
-                    key = f"{rel_path}->{i}"
-                    if rel_path in path_dict and key in path_r_dict:
-                        out.append(f" {i} {path_r_dict[key] * 1.0 / path_dict[rel_path]}")
-                if out:
-                    g.write(f"{len(rel_path.split())} {rel_path}\n")
-                    g.write(str(len(out)))
-                    for item in out:
-                        g.write(item)
-                    g.write("\n")
 
     def write_pos_pra(name, triples):
         out_path = os.path.join(dataset_dir, f"{name}_pra.txt")
@@ -331,13 +414,15 @@ def generate_pra_for_dataset(args, dataset_dir):
         print(f"Wrote: {out_path}")
 
     write_pos_pra("train", train_triples)
-    # write_pos_pra("valid", valid_triples)
-    # write_pos_pra("test", test_triples)
     write_neg_pra("train", train_triples)
-
-    if args.write_path_stats:
-        print(f"Wrote: {path2_path}")
-        print(f"Wrote: {confidence_path}")
+    if args.generate_dskrl_aux:
+        generate_dskrl_aux_files(
+            dataset_dir=dataset_dir,
+            train_triples=train_triples,
+            relation2id=relation2id,
+            domain_jaccard_threshold=args.dskrl_domain_jaccard_threshold,
+            type_jaccard_threshold=args.dskrl_type_jaccard_threshold,
+        )
 
 
 def main():
@@ -356,10 +441,23 @@ def main():
     parser.add_argument("--neg_ratio", type=int, default=1,
                         help="Number of negative triples per positive for neg_train_pra.txt")
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--write_mappings", action="store_true",
-                        help="Write relation2id.txt and entity2id.txt")
-    parser.add_argument("--write_path_stats", action="store_true",
-                        help="Write path2.txt and confidence.txt")
+    parser.add_argument(
+        "--generate_dskrl_aux",
+        action="store_true",
+        help="Also generate heuristic relationType.txt/relationDomain.txt/type2id.txt/domain2id.txt",
+    )
+    parser.add_argument(
+        "--dskrl_domain_jaccard_threshold",
+        type=float,
+        default=0.2,
+        help="Jaccard threshold for clustering relation-role entity sets into domain labels",
+    )
+    parser.add_argument(
+        "--dskrl_type_jaccard_threshold",
+        type=float,
+        default=0.5,
+        help="Jaccard threshold for clustering entity-signature sets into type labels",
+    )
     args = parser.parse_args()
 
     dataset_dirs = []

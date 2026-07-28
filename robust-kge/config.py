@@ -1,10 +1,12 @@
-DBS = ["UMLS", "KINSHIP"] #, "NELL-995-h100", "FB15k-237", "WN18RR"
-MODELS = ['Pykeen_TransE', 'Pykeen_TransH', "Pykeen_MuRE", "Pykeen_RotatE", "DistMult", "ComplEx", "DeCaL", "Keci", "QMult"]
-
+DBS = ["FB15k-237"] #, "NELL-995-h100", "FB15k-237", "WN18RR"
+# MODELS = ["Pykeen_RotatE", "Pykeen_MuRE" ,"Keci"]
+ 
+MODELS = ["Pykeen_TransE"]
+#'Pykeen_TransE', 'Pykeen_TransH', "DistMult", "ComplEx", "DeCaL"
 
 
 BATCH_SIZE = "1024"
-LEARNING_RATE = "0.1"
+LEARNING_RATE = "1e-3"
 
 NUM_EPOCHS = "100"
 EMB_DIM = "32"

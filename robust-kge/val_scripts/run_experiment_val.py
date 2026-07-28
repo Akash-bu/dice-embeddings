@@ -5,26 +5,30 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
+import argparse
 from dicee.executer import run_dicee_eval
 
+# Add the robust-kge directory to the path for config import
 robust_kge_dir = Path(__file__).parent
 sys.path.insert(0, str(robust_kge_dir))
 
+# Get project root (parent of robust-kge directory)
 project_root = robust_kge_dir.parent
 
+# Add project root to Python path so dicee can be imported
 sys.path.insert(0, str(project_root))
 
 from config import (DBS,
                     MODELS,
                     BATCH_SIZE,
                     LEARNING_RATE,
-                    NUM_EPOCHS,
                     EMB_DIM,
-                    LOSS_FN,
-                    SCORING_TECH,
-                    OPTIM,
-                    EVAL_MODEL_TEST
+                    LOSS_FN
                     )
+NUM_EPOCHS = 100
+SCORING_TECH = "KvsAll"
+OPTIM = "Adam"
+EVAL_MODEL = "val"
 
 def _safe_suffix(suffix, max_len=120):
     """Bound a filename suffix so the full path stays under the OS limit.
@@ -46,15 +50,16 @@ def create_results_table(results_dict):
             rows.append({
                 'Dataset': dataset,
                 'Model': model,
-                'Test_MRR': mrr
+                'Val_MRR': mrr
             })
     
     df = pd.DataFrame(rows)
     
+    # Create pivot table: models as rows, datasets as columns
     pivot_df = df.pivot_table(
         index='Model',
         columns='Dataset',
-        values='Test_MRR',
+        values='Val_MRR',
         aggfunc='first'
     )
     
@@ -64,17 +69,20 @@ def create_visualization(pivot_df, output_dir, loss_fn=None):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Set style
     sns.set_style("whitegrid")
     plt.rcParams['figure.figsize'] = (max(12, len(pivot_df.columns) * 1.5), max(8, len(pivot_df.index) * 0.8))
     
+    # Create figure with subplots
     fig, ax = plt.subplots(figsize=(max(14, len(pivot_df.columns) * 1.8), max(10, len(pivot_df.index) * 1.0)))
     
+    # Create heatmap
     sns.heatmap(
         pivot_df,
         annot=True,
         fmt='.4f',
         cmap='RdYlGn', 
-        cbar_kws={'label': 'Test MRR'},
+        cbar_kws={'label': 'Val MRR'},
         linewidths=0.5,
         linecolor='gray',
         ax=ax,
@@ -82,17 +90,20 @@ def create_visualization(pivot_df, output_dir, loss_fn=None):
         vmax=1.0
     )
     
+    # Create title with loss function name
     loss_name = loss_fn if loss_fn else "Default"
-    title = f'MRR Comparison: Models vs Datasets (Test Set) - Loss: {loss_name}'
+    title = f'MRR Comparison: Models vs Datasets (Val Set) - Loss: {loss_name}'
     ax.set_title(title, fontsize=16, fontweight='bold', pad=20)
     ax.set_xlabel('Dataset', fontsize=12, fontweight='bold')
     ax.set_ylabel('Model', fontsize=12, fontweight='bold')
     
+    # Rotate x-axis labels for better readability
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     
     plt.tight_layout()
     
+    # Save figure
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     loss_suffix = _safe_suffix(f"_{loss_fn}" if loss_fn else "")
     image_path = output_dir / f"mrr_comparison_heatmap{loss_suffix}_{timestamp}.png"
@@ -104,35 +115,39 @@ def create_visualization(pivot_df, output_dir, loss_fn=None):
     return image_path
 
 def save_results_table(df, pivot_df, output_dir, loss_fn=None):
-
+    """Save results to CSV files and create visualizations"""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
+    # Append loss function name to filenames if provided
     loss_suffix = _safe_suffix(f"_{loss_fn}" if loss_fn else "")
     
+    # Save detailed results
     detailed_path = output_dir / f"detailed_results{loss_suffix}_{timestamp}.csv"
     df.to_csv(detailed_path, index=False)
     print(f"\nDetailed results saved to: {detailed_path}")
     
+    # Save pivot table
     pivot_path = output_dir / f"comparison_table{loss_suffix}_{timestamp}.csv"
     pivot_df.to_csv(pivot_path)
     print(f"Comparison table saved to: {pivot_path}")
     
+    # Print formatted table
     print("\n" + "="*80)
-    print("MRR Comparison Table (Test Set)")
+    print("MRR Comparison Table (Val Set)")
     print("="*80)
     print(pivot_df.to_string())
     print("="*80)
     
+    # Create heatmap visualization
     print("\nGenerating heatmap visualization...")
     create_visualization(pivot_df, output_dir, loss_fn)
     
     return detailed_path, pivot_path
 
 if __name__ == "__main__":
-    import argparse
     
     parser = argparse.ArgumentParser(description='Run KGE experiments')
     parser.add_argument('--loss_fn', type=str, default=None,
@@ -151,8 +166,8 @@ if __name__ == "__main__":
     help = 'Optimizer to use (e.g., Adam). If not provided, uses value from config.py')
     parser.add_argument('--eval_model', type=str, default=None,
     help = 'Evaluation model to use (e.g., train_val_test). If not provided, uses value from config.py')
-    parser.add_argument("--trainer", type=str, default=None)
-    parser.add_argument("--accelerator", type=str, default=None)
+    parser.add_argument("--trainer", type=str, default="PL")
+    parser.add_argument("--accelerator", type=str, default="gpu")
     parser.add_argument("--devices", type=str, default=None)
     parser.add_argument("--precision", type=str, default=None)
     parser.add_argument("--random_seed", type=str, default=None)
@@ -162,6 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--block_size", type=str, default=None)
     args = parser.parse_args()
     
+    # Use command-line argument if provided, otherwise use config value
     loss_function = args.loss_fn if args.loss_fn else LOSS_FN
     learning_rate = args.lr if args.lr else LEARNING_RATE
     batch_size = args.batch_size if args.batch_size else BATCH_SIZE
@@ -169,7 +185,7 @@ if __name__ == "__main__":
     embedding_dim = args.emb_dim if args.emb_dim else EMB_DIM
     scoring_technique = args.scoring_technique if args.scoring_technique else SCORING_TECH
     optim = args.optim if args.optim else OPTIM
-    eval_model = args.eval_model if args.eval_model else EVAL_MODEL_TEST
+    eval_model = args.eval_model if args.eval_model else EVAL_MODEL
     trainer = args.trainer if args.trainer else None
     accelerator = args.accelerator if args.accelerator else None
     devices = args.devices if args.devices else None
@@ -180,16 +196,24 @@ if __name__ == "__main__":
     neg_ratio = args.neg_ratio if args.neg_ratio else "2"  # default matches run.py's --neg_ratio default
     num_of_output_channels = args.num_of_output_channels if args.num_of_output_channels else None
     block_size = args.block_size if args.block_size else None
+    
+    allowed_subdirs = {"0.0", "0.08", "0.16", "0.32"}
 
+    # Dictionary to store all results: {dataset: {model: mrr}}
     all_results = {}
     
-    results_dir = robust_kge_dir / "saved_models"
+    # Default to saved_models in robust-kge directory
+    results_dir = robust_kge_dir / "saved_models_val"
     
+    # Run new experiments
     for DB in DBS:
         
         db_path = project_root / "Datasets_Perturbed" / DB
         if db_path.exists():
-            subdirs = sorted([d.name for d in db_path.iterdir() if d.is_dir()])
+            subdirs = sorted(
+                d.name for d in db_path.iterdir()
+                if d.is_dir() and d.name in allowed_subdirs
+            )
         else:
             print(f"Warning: {db_path} does not exist, skipping {DB}")
             continue
@@ -213,7 +237,7 @@ if __name__ == "__main__":
                         path_to_store_single_run=str(results_dir / DB / subdir / MODEL / ""),
                         scoring_technique=scoring_technique,
                         optim=optim,
-                        eval_model=eval_model,
+                        eval_model=EVAL_MODEL,
                         trainer=trainer,
                         accelerator=accelerator,
                         devices=devices,
@@ -223,15 +247,18 @@ if __name__ == "__main__":
                         num_of_output_channels=num_of_output_channels,
                         block_size=block_size
                     )
-                    test_mrr = result.get('Test', {}).get('MRR', None)
-                    all_results[dataset_name][MODEL] = test_mrr
-                    print(f"Completed: {MODEL} on {dataset_name} - Test MRR: {test_mrr}")
+
+                    val_mrr = result.get('Val', {}).get('MRR', None)
+
+                    all_results[dataset_name][MODEL] = val_mrr
+                    print(f"Completed: {MODEL} on {dataset_name} - Val MRR: {val_mrr}")
                 except Exception as e:
                     print(f"Error running {MODEL} on {dataset_name}: {e}")
                     all_results[dataset_name][MODEL] = None
     
+    # Create and save results table
     if all_results:
         df, pivot_df = create_results_table(all_results)
-        save_results_table(df, pivot_df, project_root / "robust-kge" / "results", loss_function)
+        save_results_table(df, pivot_df, project_root / "robust-kge" / "val_results", loss_function)
     else:
         print("No results to save.")

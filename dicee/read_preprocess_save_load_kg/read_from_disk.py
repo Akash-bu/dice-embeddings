@@ -1,5 +1,6 @@
 from .util import read_from_disk, read_from_triple_store_with_pandas, read_from_triple_store_with_polars
 import glob
+import os
 import pandas as pd
 import numpy as np
 
@@ -45,15 +46,22 @@ class ReadFromDisk:
             self.kg.raw_test_set = None
         elif self.kg.dataset_dir:
             for i in glob.glob(self.kg.dataset_dir + '/*'):
-                if 'train' in i:
+                # Match only the exact split files (train.txt / valid.txt / test.txt).
+                # Files such as train_pra.txt, neg_train_pra.txt, etc. must NOT be
+                # loaded here — they are auxiliary path-data files consumed by the
+                # loss function (e.g. DSKRLLoss / PCRA) and their format is not a
+                # plain triple list.  Using os.path.splitext guarantees we only
+                # match the bare stem 'train', 'valid', or 'test'.
+                stem = os.path.splitext(os.path.basename(i))[0]
+                if stem == 'train':
                     self.kg.raw_train_set = read_from_disk(i, self.kg.read_only_few, self.kg.sample_triples_ratio,
                                                        backend=self.kg.backend, separator=self.kg.separator)
 
                     if self.kg.add_noise_rate:
                         self.add_noisy_triples_into_training()
-                elif 'test' in i and self.kg.eval_model is not None:
+                elif stem == 'test' and self.kg.eval_model is not None:
                     self.kg.raw_test_set = read_from_disk(i, backend=self.kg.backend, separator=self.kg.separator)
-                elif 'valid' in i and self.kg.eval_model is not None:
+                elif stem == 'valid' and self.kg.eval_model is not None:
                     self.kg.raw_valid_set = read_from_disk(i, backend=self.kg.backend, separator=self.kg.separator)
                 else:
                     print(f'Not processed data: {i}')

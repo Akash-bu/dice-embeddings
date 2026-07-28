@@ -82,16 +82,24 @@ class NodeTrainer:
         self.optimizer = model.configure_optimizers()
         # (3) Send model to local trainer.
         self.train_dataset_loader = train_dataset_loader
-        self.loss_func = model.loss
         self.callbacks = callbacks
         self.model = torch.compile(model).to(self.local_rank)
         self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[self.local_rank])#, output_device=self.local_rank)
         self.num_epochs = num_epochs
         self.loss_history = []
-        # TODO: CD: This should be given as an input param
-        ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}["float16"]
-        self.ctx = torch.amp.autocast(device_type="cuda",dtype=ptdtype)
-        self.scaler = torch.amp.GradScaler("cuda",enabled=True)
+        # Keep fp32 by default; enable AMP only when explicitly requested.
+        precision = str(getattr(self.trainer.attributes, "precision", "32")).lower()
+        amp_enabled = False
+        ptdtype = torch.float32
+        if precision in {"16", "16-mixed", "fp16", "float16"}:
+            amp_enabled = True
+            ptdtype = torch.float16
+        elif precision in {"bf16", "bf16-mixed", "bfloat16"}:
+            amp_enabled = True
+            ptdtype = torch.bfloat16
+
+        self.ctx = torch.amp.autocast(device_type="cuda", dtype=ptdtype, enabled=amp_enabled)
+        self.scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled and ptdtype == torch.float16)
 
     def _load_snapshot(self, snapshot_path):
         raise NotImplementedError
@@ -111,8 +119,10 @@ class NodeTrainer:
 
         """
         with self.ctx:
-            output = self.model(source)
-            loss = self.loss_func(output, targets)
+            # Reuse the model's centralized training_step so custom loss wiring stays consistent.
+            loss = self.model.module.training_step(batch=(source, targets))
+            if loss.numel() != 1:
+                loss = loss.mean()
             batch_loss = loss.item()
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
@@ -170,6 +180,7 @@ class NodeTrainer:
                                                       verbose=self.local_rank == self.global_rank == 0,
                                                       position=0,
                                                         leave=True)):
+            self.model.module._current_epoch = epoch
             self.train_dataset_loader.sampler.set_epoch(epoch)
             epoch_loss = 0
             for i, z in enumerate(self.train_dataset_loader):

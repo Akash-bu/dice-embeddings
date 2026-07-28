@@ -30,13 +30,19 @@ from dicee.losses.custom_losses import (
                                         LocalTripleLoss,
                                         LocalTripleWithPriorPathLoss,
                                         LocalTripleWithPriorAndAdaptivePathLoss,
+                                        DSKRLLoss,
                                         general_robust_loss,
                                         NCELoss,
                                         GCELoss,
                                         NCEandAGCELoss,
                                         NCEandAULoss,
                                         RDALoss,
-                                        CORESLoss
+                                        CORESLoss,
+                                        PTrustELoss,
+                                        RDARoBossLoss,
+                                        RDAWaveLoss,
+                                        BertKGEContrastiveCCALoss,
+                                        cca
                                         )
 
 class BaseKGELightning(pl.LightningModule):
@@ -79,6 +85,27 @@ class BaseKGELightning(pl.LightningModule):
             # Some losses (e.g., FocalLoss) may return per-element values.
             loss_batch = loss_batch.mean()
 
+        # --- diagnostics: pred/target stats going into the loss ---
+        # try:
+        #     batch_idx_dbg = int(self.trainer.fit_loop.epoch_loop.batch_idx)
+        # except Exception:
+        #     batch_idx_dbg = -1
+        # with torch.no_grad():
+        #     p = yhat_batch.detach().float()
+        #     t = y_batch.detach().float() if torch.is_tensor(y_batch) else None
+        #     p_sig = torch.sigmoid(p)
+        #     pred_msg = (f"pred min={float(p.min()):+.3e} max={float(p.max()):+.3e} "
+        #                 f"mean={float(p.mean()):+.3e} std={float(p.std()):+.3e} "
+        #                 f"sigmoid_mean={float(p_sig.mean()):.3f} "
+        #                 f"nan={int(torch.isnan(p).sum())} inf={int(torch.isinf(p).sum())}")
+        #     if t is not None:
+        #         tgt_msg = (f"target min={float(t.min()):+.3e} max={float(t.max()):+.3e} "
+        #                    f"mean={float(t.mean()):+.3e} pos_frac={float((t > 0.5).float().mean()):.4f}")
+        #     else:
+        #         tgt_msg = "target=<non-tensor>"
+        #     print(f"[fwd]  epoch={self.current_epoch} batch={batch_idx_dbg} "
+        #           f"loss={float(loss_batch.detach()):.6f} | {pred_msg} | {tgt_msg}")
+
         #self.log("gradient_norm", total_norm, prog_bar=True, on_step=True, on_epoch=True)
 
         self.training_step_outputs.append(loss_batch.item())
@@ -88,8 +115,59 @@ class BaseKGELightning(pl.LightningModule):
                  on_epoch=True,
                  prog_bar=True,
                  sync_dist=True,
-                 logger=False)
+                 logger=True)
         return loss_batch
+
+    # def on_after_backward(self) -> None:
+    #     """
+    #     Lightning hook fired after backward() but before optimizer.step().
+    #     Prints gradient diagnostics so we can see why some losses give MRR ~ 0:
+    #     total grad norm every batch, plus per-parameter breakdown on batch 0
+    #     of each epoch (catches vanishing/exploding/dead-parameter gradients).
+    #     """
+    #     try:
+    #         batch_idx = int(self.trainer.fit_loop.epoch_loop.batch_idx)
+    #     except Exception:
+    #         batch_idx = -1
+    #     epoch = int(getattr(self, "current_epoch", -1))
+    #     loss_name = type(getattr(self, "loss", None)).__name__
+    #     last_loss = self.training_step_outputs[-1] if self.training_step_outputs else float("nan")
+
+    #     total_sq = 0.0
+    #     total_nan = 0
+    #     total_inf = 0
+    #     n_params = 0
+    #     rows = []
+    #     for name, param in self.named_parameters():
+    #         if param.grad is None:
+    #             if batch_idx == 0:
+    #                 rows.append(f"  {name}: grad=None (no gradient flow)")
+    #             continue
+    #         g = param.grad.detach().float()
+    #         nan_c = int(torch.isnan(g).sum().item())
+    #         inf_c = int(torch.isinf(g).sum().item())
+    #         g_fin = torch.nan_to_num(g, nan=0.0, posinf=0.0, neginf=0.0)
+    #         sq = float((g_fin ** 2).sum().item())
+    #         total_sq += sq
+    #         total_nan += nan_c
+    #         total_inf += inf_c
+    #         n_params += 1
+    #         if batch_idx == 0:
+    #             rows.append(
+    #                 f"  {name}: norm={sq ** 0.5:.3e} min={float(g_fin.min()):+.3e} "
+    #                 f"max={float(g_fin.max()):+.3e} mean={float(g_fin.mean()):+.3e} "
+    #                 f"zero_frac={float((g == 0).float().mean()):.3f} nan={nan_c} inf={inf_c}"
+    #             )
+
+    #     total_norm = total_sq ** 0.5
+    #     if batch_idx == 0:
+    #         print(f"\n[grad] epoch={epoch} batch=0 loss_fn={loss_name} loss={last_loss:.6f} "
+    #               f"total_norm={total_norm:.3e} nan={total_nan} inf={total_inf} params={n_params}")
+    #         for r in rows:
+    #             print(r)
+    #     else:
+    #         print(f"[grad] epoch={epoch} batch={batch_idx} loss={last_loss:.6f} "
+    #               f"total_norm={total_norm:.3e} nan={total_nan} inf={total_inf}")
 
     def loss_function(self, yhat_batch: torch.FloatTensor, y_batch: torch.FloatTensor):
         """
@@ -192,6 +270,7 @@ class BaseKGE(BaseKGELightning):
         self.hidden_normalizer = IdentityClass()
         self.param_init = IdentityClass
         self.init_params_with_sanity_checking()
+        self.save_hyperparameters(ignore = ["loss"])  # Save hyperparameters for easy access and logging
 
         # Dropouts
         self.input_dp_ent_real = torch.nn.Dropout(self.input_dropout_rate)
@@ -230,7 +309,7 @@ class BaseKGE(BaseKGELightning):
         if self.args["loss_fn"] == "AGCELoss":
             self.loss = AGCELoss(
                 agce_a=self.args.get("agce_a", 0.1),
-                agce_q=self.args.get("agce_q", 1.0),
+                agce_q=self.args.get("agce_q",1.5),
                 eps=self.args.get("agce_eps", 1e-8),
                 scale=self.args.get("agce_scale", 1.0),
             )
@@ -294,7 +373,8 @@ class BaseKGE(BaseKGELightning):
                 score_is_distance=self.args.get("local_score_is_distance", False),
                 lambda_1_lt=self.args.get("lambda_1_lt", 1.5),
                 lambda_2_pp=self.args.get("lambda_2_pp", 0.1),
-            )       
+            )
+
         if self.args["loss_fn"] == "LocalTripleWithPriorAndAdaptivePathLoss":
             self.loss = LocalTripleWithPriorAndAdaptivePathLoss(
                 margin=self.args.get("local_margin", 1.0),
@@ -309,39 +389,118 @@ class BaseKGE(BaseKGELightning):
                 lambda_2_pp=self.args.get("lambda_2_pp", 0.1),
                 lambda_3_ap=self.args.get("lambda_3_ap", 0.4),
                 adaptive_use_l1=self.args.get("adaptive_use_l1", 1),
-            )   
+            )
+
+        if self.args["loss_fn"] == "DSKRLLoss":
+            self.loss = DSKRLLoss(
+                margin=self.args.get("dskrl_margin", 1.0),
+                local_decay_gamma=self.args.get("dskrl_local_decay_gamma", 0.9),
+                path_margin=self.args.get("dskrl_path_margin", 1.0),
+                positive_threshold=self.args.get("dskrl_positive_threshold", 0.5),
+                use_max_negative=self.args.get("dskrl_use_max_negative", True),
+                score_is_distance=self.args.get("dskrl_score_is_distance", False),
+                support_k1=self.args.get("dskrl_support_k1", 0.6),
+                support_k2=self.args.get("dskrl_support_k2", 0.4),
+                dps_use_l1=self.args.get("dskrl_dps_use_l1", False),
+                num_relations=self.num_relations,
+                embedding_dim=self.embedding_dim,
+                eps=self.args.get("dskrl_eps", 1e-12),
+                use_native_score=self.args.get("dskrl_use_native_score", True),
+                use_native_score_for_ls=self.args.get("dskrl_use_native_score_for_ls", True),
+                type_combine_mode=self.args.get("dskrl_type_combine_mode", "weighted_sum"),
+            )
+            
         if self.args["loss_fn"] == "general_robust_loss":
             self.loss = general_robust_loss(
                 alpha_grl=2.0, scale_grl=0.1
-            )    
-        if self.args["loss_fn"] == "NCELoss":
-            self.loss = NCELoss()        
-
+            )
         if self.args["loss_fn"] == "GCELoss":
-            self.loss = GCELoss() 
+            self.loss = GCELoss()
+            
+        if self.args["loss_fn"] == "NCELoss":
+            self.loss = NCELoss(
+                scale=self.args.get("nce_scale", 1.0),
+            )
 
         if self.args["loss_fn"] == "NCEandAGCELoss":
-            self.loss = NCEandAGCELoss() 
-
+            self.loss = NCEandAGCELoss(
+                nce_scale=self.args.get("nce_scale", 1.0),
+                agce_a=self.args.get("agce_a", 0.5),
+                agce_q=self.args.get("agce_q", 2.2),
+                agce_eps=self.args.get("agce_eps", 1e-8),
+                agce_scale=self.args.get("agce_scale", 1.0),
+            )
         if self.args["loss_fn"] == "NCEandAULoss":
-            self.loss = NCEandAULoss() 
-
+            self.loss = NCEandAULoss(
+                nce_scale=self.args.get("nce_scale", 1.0),
+                aul_a=self.args.get("aul_a", 2.0),
+                aul_p=self.args.get("aul_p", 1.5),
+                aul_eps=self.args.get("aul_eps", 1e-7),
+                aul_scale=self.args.get("aul_scale", 1.0),
+            )
         if self.args["loss_fn"] == "RDALoss":
             self.loss = RDALoss(
-                alpha_rda=self.args.get("rda_alpha", 0.1),
-                beta_rda=self.args.get("rda_beta", 0.2),
+                alpha_rda=self.args.get("rda_alpha", 0.05),
+                beta_rda=self.args.get("rda_beta", 0.6),
                 adaptive_beta=self.args.get("rda_adaptive_beta", True),
                 epochs=self.args.get("num_epochs", None),
                 warmup=self.args.get("rda_warmup", False),
                 adaptive_start_beta=self.args.get("rda_adaptive_start_beta", 0.75),
                 adaptive_end_beta=self.args.get("rda_adaptive_end_beta", 0.6),
                 adaptive_type=self.args.get("rda_adaptive_type", "cosine"),
+                warmup_epochs=self.args.get("warmup_epochs", 0),
+            )
+        
+        if self.args["loss_fn"] == "RDARoBossLoss":
+            self.loss = RDARoBossLoss(
+                a=self.args.get("rda_roboss_a", 1.5),
+                lambda_r=self.args.get("rda_roboss_lambda", 1.0),
+                beta_start=self.args.get("rda_beta_start", 0.75),
+                beta_end=self.args.get("rda_beta_end", 0.60),
+                total_epochs=self.args.get("num_epochs", None),
+                beta_fixed=self.args.get("rda_beta_fixed", None),
+                eps=self.args.get("rda_eps", 1e-8),
+            )
+
+        if self.args["loss_fn"] == "RDAWaveLoss":
+            self.loss = RDAWaveLoss(
+                a=self.args.get("rda_wave_a", 1.5),
+                lambda_w=self.args.get("rda_wave_lambda", 1.0),
+                beta_start=self.args.get("rda_beta_start", 0.75),
+                beta_end=self.args.get("rda_beta_end", 0.60),
+                total_epochs=self.args.get("num_epochs", None),
+                beta_fixed=self.args.get("rda_beta_fixed", None),
+                eps=self.args.get("rda_eps", 1e-8),
             )
 
         if self.args["loss_fn"] == "CORESLoss":
             self.loss = CORESLoss(
-                beta_max = self.args.get("beta_max", 2.0), warmup_epochs = self.args.get("warmup_epochs", 30)
-            ) 
+                beta_max=self.args.get("beta_max", 2.0),
+                warmup_epochs=self.args.get("warmup_epochs", 30),
+            )
+
+        if self.args["loss_fn"] == "PTrustELoss":
+            self.loss = PTrustELoss()
+
+        if self.args["loss_fn"] == "BertKGEContrastiveCCA":
+            self.loss = BertKGEContrastiveCCALoss(
+                nbert_repr_path=self.args.get("nbert_repr_path"),
+                num_entities=self.num_entities,
+                num_relations=self.num_relations,
+                embedding_dim=self.embedding_dim,
+                projection_dim=self.args.get("cca_projection_dim", 128),
+                temperature=self.args.get("cca_temperature", 0.1),
+                lambda_cca=self.args.get("lambda_cca", 0.1),
+                positive_threshold=self.args.get("cca_positive_threshold", 0.5),
+            )
+        
+        if self.args["loss_fn"] == "cca":
+            self.loss = cca(
+                temp=self.args.get("cca_temperature", 0.1),
+                use_confidence=self.args.get("cca_use_confidence", True),
+                warmup_epochs=self.args.get("cca_warmup_epochs", 5),
+            )
+
 
         if self.byte_pair_encoding and self.args['model'] != "BytE":
             self.token_embeddings = torch.nn.Embedding(self.num_tokens, self.embedding_dim)
@@ -625,7 +784,7 @@ class BaseKGE(BaseKGELightning):
         return self.entity_embeddings.weight.data.data.detach(), self.relation_embeddings.weight.data.detach()
 
 
-class IdentityClass(torch.nn.Module):
+class IdentityClass(torch.nn.Module): #used to return the arguments unchanged when normalization or parameter initialization is not applied.
     def __init__(self, args=None):
         super().__init__()
         self.args = args

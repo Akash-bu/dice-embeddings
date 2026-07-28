@@ -6,6 +6,7 @@ including PyTorch Lightning, DDP, and custom CPU/GPU trainers.
 import copy
 import os
 from typing import List, Optional, Tuple, Union
+from lightning.pytorch.loggers import WandbLogger
 
 import lightning as pl
 import numpy as np
@@ -25,6 +26,8 @@ from dicee.callbacks import (
 from dicee.dataset_classes import construct_dataset
 from dicee.knowledge_graph import KG
 from dicee.models.base_model import BaseKGE
+from dicee.losses.pcra import compute_prior_confidence_map, load_pra_paths
+from dicee.losses.dskrl_aux import load_dskrl_aux_data
 from dicee.static_funcs import select_model, timeit
 from dicee.weight_averaging import ASWA, EMA, SWA, SWAG, TWA
 
@@ -75,13 +78,29 @@ def initialize_trainer(
     elif args.trainer == 'PL':
         print('Initializing Pytorch-lightning Trainer', end='\t')
         kwargs = vars(args)
+        pl_precision = kwargs.get("precision", None) or "32-true"
+        pl_devices = kwargs.get("devices", None)
+        if pl_devices is None:
+            pl_devices = kwargs.get("gpus", None)
+        if pl_devices in (None, ""):
+            pl_devices = "auto"
+        if isinstance(pl_devices, str) and pl_devices.isdigit():
+            pl_devices = int(pl_devices)
         # NOTE: PyTorch Lightning Trainer has many optional parameters
         # See: https://lightning.ai/docs/pytorch/stable/common/trainer.html
-        trainer = pl.Trainer(accelerator=kwargs.get("accelerator", "auto"),
+
+        wandb_logger = WandbLogger(
+            project = kwargs.get("wandb_project", "dice-embeddings"),
+            name = kwargs.get("wandb_run_name", None),
+            log_model = False,
+        )
+        trainer = pl.Trainer(
+            accelerator=kwargs.get("accelerator", "auto"),
                           strategy=kwargs.get("strategy", "auto"),
+                          devices=pl_devices,
                           num_nodes=kwargs.get("num_nodes", 1),
-                          precision=kwargs.get("precision", None),
-                          logger=kwargs.get("logger", None),
+                          precision=pl_precision,
+                          logger=wandb_logger,
                           callbacks=callbacks,
                           fast_dev_run=kwargs.get("fast_dev_run", False),
                           max_epochs=kwargs["num_epochs"],
@@ -341,6 +360,100 @@ class DICE_Trainer:
             self.trainer.evaluator = self.evaluator
             self.trainer.dataset = knowledge_graph
             self.trainer.form_of_labelling = form_of_labelling
+
+            if isinstance(knowledge_graph, KG):
+                print(
+                    type(knowledge_graph.relation_to_idx),
+                    knowledge_graph.relation_to_idx.head()
+                    if hasattr(knowledge_graph.relation_to_idx, "head")
+                    else list(knowledge_graph.relation_to_idx)[:5],
+                )
+            else:
+                print(f"Using memmap training set with shape {knowledge_graph.shape}")
+
+
+            # Load PCRA-derived data for losses that use prior-path confidence and/or path metadata.
+            if (
+                hasattr(model, "loss")
+                and isinstance(knowledge_graph, KG)
+                and (
+                    hasattr(model.loss, "set_prior_confidence_map")
+                    or hasattr(model.loss, "set_path_data")
+                    or hasattr(model.loss, "set_aux_data")
+                )
+            ):
+                if self.args.dataset_dir:
+                    path_data = load_pra_paths(
+                        dataset_dir=self.args.dataset_dir,
+                        entity_to_idx=knowledge_graph.entity_to_idx,
+                        relation_to_idx=knowledge_graph.relation_to_idx,
+                        triple_order=getattr(self.args, "pcra_triple_order", "s r o"),
+                    )
+                    if hasattr(model.loss, "set_path_data"):
+                        model.loss.set_path_data(path_data)
+                    if hasattr(model.loss, "set_prior_confidence_map"):
+                        pp_map = compute_prior_confidence_map(
+                            dataset_dir=self.args.dataset_dir,
+                            entity_to_idx=knowledge_graph.entity_to_idx,
+                            relation_to_idx=knowledge_graph.relation_to_idx,
+                            triple_order=getattr(self.args, "pcra_triple_order", "s r o"),
+                            epsilon=getattr(self.args, "pcra_epsilon", 1e-6),
+                            min_prob=getattr(self.args, "pcra_min_prob", 0.01),
+                        )
+                        sample_items = list(pp_map.items())[:10]
+                        print("Sample prior path confidence values (first 10):")
+                        #reverse mapping
+                        idx_to_entity = getattr(knowledge_graph, "idx_to_entity", None)
+                        idx_to_relations = getattr(knowledge_graph, "idx_to_relations", None)
+                        if idx_to_entity is None or idx_to_relations is None:
+                            ent_map = knowledge_graph.entity_to_idx
+                            rel_map = knowledge_graph.relation_to_idx
+                            if hasattr(ent_map, "to_pandas"):
+                                ent_map = ent_map.to_pandas()
+                            if hasattr(rel_map, "to_pandas"):
+                                rel_map = rel_map.to_pandas()
+                            if hasattr(ent_map, "columns") and "entity" in ent_map.columns:
+                                idx_to_entity = {int(i): v for v, i in zip(ent_map["entity"], ent_map.index)}
+                            if hasattr(rel_map, "columns") and "relation" in rel_map.columns:
+                                idx_to_relations = {int(i): v for v, i in zip(rel_map["relation"], rel_map.index)}
+                        for triple, pp_val in sample_items:
+                            h_id, r_id, t_id = triple
+                            h_str = idx_to_entity.get(h_id, h_id) if idx_to_entity else h_id
+                            r_str = idx_to_relations.get(r_id, r_id) if idx_to_relations else r_id
+                            t_str = idx_to_entity.get(t_id, t_id) if idx_to_entity else t_id
+                            print(f"  ({h_id}, {r_id}, {t_id}) [{h_str}, {r_str}, {t_str}] -> {pp_val}")
+                        model.loss.set_prior_confidence_map(pp_map)
+                    if hasattr(model.loss, "set_aux_data"):
+                        aux_data = load_dskrl_aux_data(
+                            dataset_dir=self.args.dataset_dir,
+                            relation_to_idx=knowledge_graph.relation_to_idx, #relation type/domain metadata
+                            entity_to_idx=knowledge_graph.entity_to_idx,
+                        )
+                        if aux_data:
+                            head_type_ids = aux_data.get("head_type_ids", [])
+                            tail_type_ids = aux_data.get("tail_type_ids", [])
+                            head_domain_ids = aux_data.get("head_domain_ids", [])
+                            tail_domain_ids = aux_data.get("tail_domain_ids", [])
+                            typed_relations = sum(
+                                1 for head_id, tail_id in zip(head_type_ids, tail_type_ids)
+                                if head_id >= 0 and tail_id >= 0
+                            )
+                            domained_relations = sum(
+                                1 for head_id, tail_id in zip(head_domain_ids, tail_domain_ids)
+                                if head_id >= 0 and tail_id >= 0
+                            )
+                            total_relations = len(head_type_ids)
+                            print(
+                                f"[DSKRL] Matched relation type metadata for "
+                                f"{typed_relations}/{total_relations} relations."
+                            )
+                            print(
+                                f"[DSKRL] Matched relation domain metadata for "
+                                f"{domained_relations}/{total_relations} relations."
+                            )
+                        else:
+                            print("[DSKRL] No auxiliary type/domain metadata loaded.")
+                        model.loss.set_aux_data(aux_data)
             # TODO: Later, maybe we should write a callback to save the models in disk
 
             if isinstance(self.trainer, TensorParallel):

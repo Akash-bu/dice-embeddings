@@ -54,6 +54,57 @@ def get_default_arguments(description=None):
     parser.add_argument('--batch_size', type=int, default=32,
                         help='Mini batch size. If None, automatic batch finder is applied')
     parser.add_argument("--lr", type=float, default=0.1)
+    parser.add_argument('--loss_fn', type=str, default="BCELoss",
+                        help='The loss function used in the model. DSKRL ablations: '
+                             'DSKRLEHTLoss, DSKRLPTLoss, DSKRLLSLoss, DSKRLLoss')
+    parser.add_argument('--nbert_repr_path', type=str, default=None,
+                        help='Path to exported frozen N-BERT representations for BertKGEContrastiveCCA.')
+    parser.add_argument('--cca_projection_dim', type=int, default=128,
+                        help='Projection dimension for KGE/N-BERT contrastive CCA alignment.')
+    parser.add_argument('--cca_temperature', type=float, default=0.1,
+                        help='Temperature for contrastive CCA alignment.')
+    parser.add_argument('--lambda_cca', type=float, default=0.1,
+                        help='Weight of the CCA alignment term.')
+    parser.add_argument('--cca_positive_threshold', type=float, default=0.5,
+                        help='Target threshold for selecting positive triples for CCA alignment.')
+    parser.add_argument('--lambda_1_lt', type=float, default=1.5,
+                        help='Weight for local triple confidence (LT)')
+    parser.add_argument('--lambda_2_pp', type=float, default=0.1,
+                        help='Weight for prior path confidence (PP)')
+    parser.add_argument('--lambda_3_ap', type=float, default=0.4,
+                        help='Weight for adaptive path confidence (AP)')
+    parser.add_argument('--adaptive_use_l1', type=int, default=1,
+                        help='Use L1 distance for adaptive path confidence (1=L1, 0=L2)')
+    parser.add_argument('--dskrl_margin', type=float, default=1.0,
+                        help='Margin for the DSKRLLoss triple-ranking term')
+    parser.add_argument('--dskrl_local_decay_gamma', type=float, default=0.9,
+                        help='Decay factor g for local support in DSKRLLoss')
+    parser.add_argument('--dskrl_path_margin', type=float, default=1.0,
+                        help='Margin for the path-relation auxiliary loss in DSKRLLoss')
+    parser.add_argument('--dskrl_positive_threshold', type=float, default=0.5,
+                        help='Threshold used to detect positive targets in DSKRLLoss')
+    parser.add_argument('--dskrl_use_max_negative', type=int, default=1,
+                        help='Use hardest negative per positive in DSKRLLoss (1=True, 0=False)')
+    parser.add_argument('--dskrl_score_is_distance', type=int, default=0,
+                        help='Interpret model outputs as distances in DSKRLLoss (1=True, 0=False)')
+    parser.add_argument('--dskrl_support_k1', type=float, default=0.6,
+                        help='Weight k1 for local support in DSKRLLoss')
+    parser.add_argument('--dskrl_support_k2', type=float, default=0.4,
+                        help='Weight k2 for dynamic path support in DSKRLLoss')
+    parser.add_argument('--dskrl_dps_use_l1', type=int, default=0,
+                        help='Use L1 distance for DPS/path loss in DSKRLLoss (1=True, 0=False)')
+    parser.add_argument('--dskrl_eps', type=float, default=1e-12,
+                        help='Numerical stability epsilon for DSKRLLoss')
+
+    #----------------PCRA args---------------#
+    parser.add_argument('--pcra_triple_order', type=str, default="s r o",
+                        help='Order of triples in dataset files: "s r o" or "s o r"')
+    parser.add_argument('--pcra_epsilon', type=float, default=1e-6,
+                        help='Smoothing epsilon for prior path confidence (PCRA)')
+    parser.add_argument('--pcra_min_prob', type=float, default=0.01,
+                        help='Minimum normalized path probability to keep (PCRA)')
+    #----------------End of PCRA args---------------#
+
     parser.add_argument('--callbacks', type=json.loads,
                         default={},
                         help='{"PPE":{ "last_percent_to_consider": 10}}'
@@ -64,6 +115,8 @@ def get_default_arguments(description=None):
     parser.add_argument('--scoring_technique', default="NegSample",
                         help="Training technique for knowledge graph embedding model",
                         choices=["AllvsAll", "KvsAll", "1vsAll", "NegSample", "1vsSample", "KvsSample"])
+    parser.add_argument('--apply_reciprical_or_noise', action=argparse.BooleanOptionalAction, default=None,
+                        help='Override reciprocal triple augmentation. If omitted, it is inferred from scoring_technique.')
     parser.add_argument('--neg_ratio', type=int, default=2,
                         help='The number of negative triples generated per positive triple.')
     parser.add_argument('--weight_decay', type=float, default=0.0, help='L2 penalty e.g.(0.00001)')
@@ -171,7 +224,7 @@ def main():
     if args.continual_learning:
         ContinuousExecute(args).continual_start()
     else:
-        Execute(get_default_arguments()).start()
+        Execute(args).start()
 
 if __name__ == '__main__':
     main()

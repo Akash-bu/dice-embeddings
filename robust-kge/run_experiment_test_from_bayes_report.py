@@ -238,14 +238,29 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Run test experiments from BO report params.")
-    parser.add_argument("--report_file", type=str, default="bayesian_optimization_report_100_trials.txt")
+    parser.add_argument("--report_file", type=str, default="bo_trial_results/wo_reciprocals_fb15k.txt")
+    parser.add_argument(
+        "--losses",
+        type=str,
+        default=None,
+        help="Comma-separated loss names to run (e.g. 'AELoss,BCELoss'). Default: all losses in report.",
+    )
+    parser.add_argument(
+        "--model_losses",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated Model:Loss pairs to run (e.g. 'RotatE:BCELoss,MuRE:AELoss'). "
+            "Only these exact (model, loss) combinations are run. Default: all pairs in report."
+        ),
+    )
     parser.add_argument("--datasets_root", type=str, default=str(project_root / "Datasets_Perturbed"))
     parser.add_argument("--num_epochs", type=int, default=NUM_EPOCHS)
     parser.add_argument("--scoring_technique", type=str, default=SCORING_TECH)
     parser.add_argument("--optim", type=str, default=OPTIM)
     parser.add_argument("--eval_model", type=str, default=EVAL_MODEL)
-    parser.add_argument("--trainer", type=str, default=None)
-    parser.add_argument("--accelerator", type=str, default=None)
+    parser.add_argument("--trainer", type=str, default="PL")
+    parser.add_argument("--accelerator", type=str, default="cuda")
     parser.add_argument("--devices", type=str, default=None)
     parser.add_argument("--precision", type=str, default=None)
     parser.add_argument("--results_dir", type=str, default=str(project_root / "robust-kge" / "results"))
@@ -262,6 +277,30 @@ if __name__ == "__main__":
     saved_models_dir = abs_path(args.saved_models_dir, project_root)
 
     entries = parse_report_file(report_file)
+
+    if args.losses:
+        wanted = {l.strip() for l in args.losses.split(",") if l.strip()}
+        entries = [e for e in entries if e["Loss"] in wanted]
+        if not entries:
+            raise ValueError(f"No entries matched --losses={args.losses}. Available losses are in the report file.")
+
+    if args.model_losses:
+        wanted_pairs = set()
+        for token in args.model_losses.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if ":" not in token:
+                raise ValueError(f"Invalid --model_losses entry '{token}'. Expected 'Model:Loss'.")
+            model_name, loss_name = token.split(":", 1)
+            wanted_pairs.add((model_name.strip(), loss_name.strip()))
+        entries = [e for e in entries if (e["Model"], e["Loss"]) in wanted_pairs]
+        if not entries:
+            raise ValueError(
+                f"No entries matched --model_losses={args.model_losses}. "
+                f"Available (model, loss) pairs are in the report file."
+            )
+
     plan = build_zero_point_plan(entries)
     if not plan:
         raise ValueError("No valid (DB, model, loss) plan could be built from report file.")
@@ -298,14 +337,17 @@ if __name__ == "__main__":
                 precision=args.precision,
                 **params,
             )
-            test_mrr = result.get("Test", {}).get("MRR", None)
+            test_metrics = result.get("Test", {})
 
             records.append(
                 {
                     "Dataset": dataset_name,
                     "Model": model,
                     "Loss": loss_fn,
-                    "Test_MRR": test_mrr,
+                    "Test_MRR": test_metrics.get("MRR", None),
+                    "Test_H@1": test_metrics.get("H@1", None),
+                    "Test_H@3": test_metrics.get("H@3", None),
+                    "Test_H@10": test_metrics.get("H@10", None),
                 }
             )
 

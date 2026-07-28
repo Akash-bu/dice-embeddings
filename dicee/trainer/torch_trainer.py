@@ -56,7 +56,7 @@ class TorchTrainer(AbstractTrainer):
             # (2) Do not accumulate gradient, zero the gradients per batch.
             self.optimizer.zero_grad(set_to_none=True)
         # (3) Loss Forward and Backward w.r.t the batch.
-        return self.forward_backward_update(x_batch, y_batch)
+        return self.forward_backward_update(x_batch, y_batch, batch_idx=i)
 
     def fit(self, *args, train_dataloaders, **kwargs) -> None:
         """
@@ -90,6 +90,7 @@ class TorchTrainer(AbstractTrainer):
               f'| EpochBatchsize:{len(train_dataloaders)}')
 
         for epoch in (tqdm_bar := tqdm(range(self.attributes.max_epochs))):
+            self.model._current_epoch = epoch
             self.on_train_epoch_start(self, self.model)
             epoch_loss = 0
             i = 0
@@ -131,7 +132,7 @@ class TorchTrainer(AbstractTrainer):
             self.on_train_epoch_end(self, self.model)
         self.on_fit_end(self, self.model)
 
-    def forward_backward_update(self, x_batch: torch.Tensor, y_batch: torch.Tensor) -> torch.Tensor:
+    def forward_backward_update(self, x_batch: torch.Tensor, y_batch: torch.Tensor, batch_idx: int = -1) -> torch.Tensor:
         """
             Compute forward, loss, backward, and parameter update
 
@@ -139,6 +140,7 @@ class TorchTrainer(AbstractTrainer):
            ----------
            x_batch:(torch.Tensor) mini-batch inputs
            y_batch:(torch.Tensor) mini-batch outputs
+           batch_idx:(int) index of the current mini-batch within the epoch
 
            Returns
            -------
@@ -146,8 +148,72 @@ class TorchTrainer(AbstractTrainer):
        """
         batch_loss = self.training_step(batch=(x_batch, y_batch))
         batch_loss.backward()
+        self._log_gradients(batch_loss=batch_loss, batch_idx=batch_idx)
         self.optimizer.step()
         return batch_loss.item()
+
+    def _log_gradients(self, batch_loss: torch.Tensor, batch_idx: int) -> None:
+        """
+        Print gradient diagnostics after backward() but before optimizer.step().
+
+        - Every batch: total L2 grad norm across all parameters, plus loss value
+          and counts of NaN / Inf in the gradient.
+        - Batch 0 of each epoch: per-parameter breakdown (norm, min, max, mean,
+          fraction of exactly-zero entries, NaN/Inf counts). This catches losses
+          whose gradient vanishes everywhere (saturating clamps), explodes
+          (NaN/Inf -> weights become NaN -> MRR ~ 0), or is identically zero for
+          some submodule (e.g. relation embeddings never updated).
+        """
+        epoch = getattr(self.model, "_current_epoch", -1)
+        loss_name = type(getattr(self.model, "loss", None)).__name__
+
+        total_sq = 0.0
+        total_nan = 0
+        total_inf = 0
+        total_params_with_grad = 0
+        per_param_rows = []
+
+        for name, param in self.model.named_parameters():
+            if param.grad is None:
+                if batch_idx == 0:
+                    per_param_rows.append(f"  {name}: grad=None (no gradient flow)")
+                continue
+            g = param.grad.detach()
+            # Use float32 reductions for numerical stability under AMP/bf16.
+            g_f = g.float()
+            nan_count = int(torch.isnan(g_f).sum().item())
+            inf_count = int(torch.isinf(g_f).sum().item())
+            # Replace NaN/Inf with 0 just for the norm so one bad param doesn't poison the total.
+            g_finite = torch.nan_to_num(g_f, nan=0.0, posinf=0.0, neginf=0.0)
+            sq = float((g_finite ** 2).sum().item())
+            total_sq += sq
+            total_nan += nan_count
+            total_inf += inf_count
+            total_params_with_grad += 1
+
+            if batch_idx == 0:
+                norm = sq ** 0.5
+                gmin = float(g_finite.min().item())
+                gmax = float(g_finite.max().item())
+                gmean = float(g_finite.mean().item())
+                zero_frac = float((g_f == 0).float().mean().item())
+                per_param_rows.append(
+                    f"  {name}: norm={norm:.3e} min={gmin:+.3e} max={gmax:+.3e} "
+                    f"mean={gmean:+.3e} zero_frac={zero_frac:.3f} nan={nan_count} inf={inf_count}"
+                )
+
+        total_norm = total_sq ** 0.5
+        loss_val = float(batch_loss.detach().item())
+
+        if batch_idx == 0:
+            print(f"\n[grad] epoch={epoch} batch=0 loss_fn={loss_name} loss={loss_val:.6f} "
+                  f"total_norm={total_norm:.3e} nan={total_nan} inf={total_inf} "
+                  f"params_with_grad={total_params_with_grad}")
+            for row in per_param_rows:
+                print(row)
+        else:
+            print(f"[grad] epoch={epoch} batch={batch_idx} loss={loss_val:.6f} "
+                  f"total_norm={total_norm:.3e} nan={total_nan} inf={total_inf}")
 
     def extract_input_outputs_set_device(self, batch: list) -> Tuple:
         """

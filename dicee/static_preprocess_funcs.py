@@ -48,13 +48,17 @@ def preprocesses_input_args(args):
                                    'train_val_test'], f'Unexpected input for eval_model ***\t{args.eval_model}\t***'
     if args.eval_model == 'None':
         args.eval_model = None
-    # reciprocal checking
-    if args.scoring_technique in ["AllvsAll", "1vsSample", "KvsAll", "1vsAll", "KvsSample"]:
-        args.apply_reciprical_or_noise = True
-    elif args.scoring_technique in ["NegSample", "Sentence"]:
-        args.apply_reciprical_or_noise = False
+    # Respect an explicit reciprocal override; otherwise infer from the scoring technique.
+    explicit_reciprocal_setting = getattr(args, "apply_reciprical_or_noise", None)
+    if explicit_reciprocal_setting is None:
+        if args.scoring_technique in ["AllvsAll", "1vsSample", "KvsAll", "1vsAll", "KvsSample"]:
+            args.apply_reciprical_or_noise = True
+        elif args.scoring_technique in ["NegSample", "Sentence"]:
+            args.apply_reciprical_or_noise = False
+        else:
+            raise KeyError(f'Unexpected input for scoring_technique \t{args.scoring_technique}')
     else:
-        raise KeyError(f'Unexpected input for scoring_technique \t{args.scoring_technique}')
+        args.apply_reciprical_or_noise = bool(explicit_reciprocal_setting)
     if args.sample_triples_ratio is not None:
         assert 1.0 >= args.sample_triples_ratio >= 0.0
     assert args.backend in ["pandas", "polars", "rdflib"]

@@ -72,6 +72,9 @@ class Namespace(argparse.Namespace):
         self.scoring_technique: str = 'KvsAll'
         """Scoring technique for knowledge graph embedding models"""
 
+        self.apply_reciprical_or_noise = None
+        """Explicit override for reciprocal triple augmentation. If None, infer from scoring_technique."""
+
         self.neg_ratio: int = 0
         """Negative ratio for a true triple in NegSample training_technique"""
 
@@ -97,6 +100,24 @@ class Namespace(argparse.Namespace):
         """ Not tested """
 
         self.label_smoothing_rate: float = 0.0
+
+        self.loss_fn: str = "BCELoss"
+        """Loss function used to train the model."""
+
+        self.nbert_repr_path: str = None
+        "Path to exported frozen N-BERT representations for BertKGEContrastiveCCA."
+
+        self.cca_projection_dim: int = 128
+        "Projection dimension for KGE/N-BERT contrastive CCA alignment."
+
+        self.cca_temperature: float = 0.1
+        "Temperature for contrastive CCA alignment."
+
+        self.lambda_cca: float = 0.1
+        "Weight of the CCA alignment term."
+
+        self.cca_positive_threshold: float = 0.5
+        "Target threshold for selecting positive triples for CCA alignment."
 
         self.num_core: int = 0
         """Number of CPUs to be used in the mini-batch loading process"""

@@ -6,7 +6,7 @@ import math
 import numpy as np
 import os
 from torch import tensor
-from typing import Optional
+from typing import Dict, List, Optional
 
 
 class DefaultBCELoss(nn.Module):
@@ -813,7 +813,7 @@ class WaveLoss(nn.Module):
         u = 1.0 - (target * pred)
 
         u_sqr = u * u
-        # Clamp exponent to avoid inf/NaN gradients in mixed precision.
+        
         exp_arg = torch.clamp(self.wave_a * u, min=-50.0, max=50.0)
         exp_term = torch.exp(exp_arg)
         
@@ -869,12 +869,7 @@ class NSSALoss(nn.Module):
     #     neg_loss = -(weights * F.logsigmoid(-neg_scores)).sum()
 
     #     return (pos_loss + neg_loss) / 2
-    def forward(
-        self,
-        pred,
-        target,
-        current_epoch=None
-    ):
+    def forward(self, pred, target, current_epoch=None):
     
         pos_mask = target > self.positive_threshold
         neg_mask = ~pos_mask
@@ -1009,7 +1004,6 @@ def compute_prior_path_confidence(path_set, rel_path_prior, path_prior, epsilon 
     path_set: iterable of (path_id, reliability) where reliability is R(h,p,t)
     rel_path_prior: dict mapping path_id -> P(r, p)
     path_prior: dict mapping path_id -> P(p)
-    epsilon: smoothing value (epsilon in the paper)
     """
     pp = 0.0
     for path_id, reliability in path_set:
@@ -1066,25 +1060,10 @@ class LocalTripleWithPriorPathLoss(nn.Module):
         return torch.tensor(values, device = device, dtype = dtype)
 
     def forward(self, pred, target, current_epoch = None, x_batch = None):
-        if not torch.is_tensor(target):
-            if isinstance(target, (list, tuple)):
-                tensors = [item for item in target if torch.is_tensor(item)]
-                if tensors:
-                    target = None
-                    if pred is not None:
-                        for item in tensors:
-                            if item.numel() == pred.numel():
-                                target = item
-                                break
-                    if target is None:
-                        target = tensors[-1]
-            if target is None:
-                raise RuntimeError("LocalTripleWithPriorPathLoss expects target to be a torch.Tensor.")
 
         if pred.dim() > 1:
             pred = pred.reshape(-1)
             target = target.reshape(-1)
-
 
         pos_mask = target > self.local_loss.positive_threshold
         pos_scores = pred[pos_mask]
@@ -1158,6 +1137,7 @@ class LocalTripleWithPriorAndAdaptivePathLoss(nn.Module):
         lambda_3_ap = 0.4,
         adaptive_use_l1 = True,
         prior_confidence_map = None,
+        max_paths_per_triple = 30,
     ):
         super().__init__()
         self.local_loss = LocalTripleLoss(
@@ -1176,12 +1156,119 @@ class LocalTripleWithPriorAndAdaptivePathLoss(nn.Module):
         self.adaptive_use_l1 = adaptive_use_l1
         self._prior_confidence = prior_confidence_map or {}
         self._path_data = {}
+        # cap on paths kept per triple (top-K by reliability)
+        self.max_paths_per_triple = int(max_paths_per_triple) if max_paths_per_triple else None
+        # Pre-built (N, K, L) buffers — populated lazily on first forward call
+        # (num_relations is only available once model embeddings exist).
+        self._path_rel_ids_buf  = None   # (N, K, L) long
+        self._path_signs_buf    = None   # (N, K, L) float32
+        self._path_weights_buf  = None   # (N, K)    float32
+        self._path_mask_buf     = None   # (N, K)    bool
+        self._path_triple_to_idx: dict = {}
 
     def set_prior_confidence_map(self, confidence_map):
         self._prior_confidence = confidence_map or {}
 
     def set_path_data(self, path_data):
-        self._path_data = path_data or {}
+        """Store path data, truncate to top-K, and mark buffers as needing rebuild."""
+        if not path_data:
+            self._path_data = {}
+            self._path_rel_ids_buf = None
+            return
+        cap = self.max_paths_per_triple
+        if cap and cap > 0:
+            self._path_data = {
+                k: sorted(v, key=lambda x: -float(x[1]))[:cap]
+                for k, v in path_data.items()
+            }
+        else:
+            self._path_data = path_data
+        # Buffers will be built on first _get_adaptive_confidence call
+        # (we need num_relations from model.relation_embeddings at that point).
+        self._path_rel_ids_buf = None
+
+    def _build_path_buffers(self, num_relations: int):
+        """Pre-build (N, K, L) arrays from self._path_data.
+
+        Symbols
+        -------
+        N : number of triples with at least one path
+        K : max paths per triple
+        L : max path length in hops
+        """
+        import numpy as np
+        triples_list = list(self._path_data.keys())
+        N = len(triples_list)
+        K = max(len(v) for v in self._path_data.values())
+        L = max(
+            (len(p) for v in self._path_data.values() for p, _ in v),
+            default=1,
+        )
+        L = max(L, 1)
+
+        rel_ids = np.zeros((N, K, L), dtype=np.int64)
+        # signs=0 for padding so padding hops contribute 0 to path vector
+        signs   = np.zeros((N, K, L), dtype=np.float32)
+        weights = np.zeros((N, K),    dtype=np.float32)
+        mask    = np.zeros((N, K),    dtype=np.bool_)
+
+        self._path_triple_to_idx = {}
+        for i, triple in enumerate(triples_list):
+            self._path_triple_to_idx[triple] = i
+            path_list = self._path_data[triple]
+            # Guard: skip if all reliabilities are zero (degenerate)
+            if all(float(r) <= 0 for _, r in path_list):
+                continue
+            for j, (rel_path, reliability) in enumerate(path_list):
+                if float(reliability) <= 0:
+                    continue  # skip zero-prob individual paths
+                for l, pid in enumerate(rel_path):
+                    pid = int(pid)
+                    if pid < num_relations:
+                        rel_ids[i, j, l] = pid
+                        signs[i, j, l]   = 1.0    # forward
+                    else:
+                        rel_ids[i, j, l] = pid - num_relations
+                        signs[i, j, l]   = -1.0   # inverse
+                # Store raw reliability (NOT normalised by z) to match the original
+                # scalar loop:  all_path_conf += float(pr) / dist  (no /z).
+                weights[i, j] = float(reliability)
+                mask[i, j]    = True
+
+        self._path_rel_ids_buf  = torch.from_numpy(rel_ids)
+        self._path_signs_buf    = torch.from_numpy(signs)
+        self._path_weights_buf  = torch.from_numpy(weights)
+        self._path_mask_buf     = torch.from_numpy(mask)
+
+    def _gather_path_tensors(self, batch_triples_list, rel_emb, device, dtype):
+        """Gather pre-built buffers for the batch and compute path vectors.
+
+        Returns
+        -------
+        path_vecs : (B, K, D)
+        weights   : (B, K)
+        mask      : (B, K) bool
+        """
+        raw_idx   = [self._path_triple_to_idx.get(tuple(t), -1)
+                     for t in batch_triples_list]
+        has_paths = torch.tensor([i >= 0 for i in raw_idx], device=device)
+        safe_idx  = torch.tensor([i if i >= 0 else 0 for i in raw_idx],
+                                 dtype=torch.long)
+
+        rel_ids_b = self._path_rel_ids_buf[safe_idx].to(device)
+        signs_b   = self._path_signs_buf[safe_idx].to(device, dtype)
+        weights_b = self._path_weights_buf[safe_idx].to(device, dtype)
+        mask_b    = self._path_mask_buf[safe_idx].to(device)
+
+        if not has_paths.all():
+            no_path   = ~has_paths
+            weights_b = weights_b.clone(); weights_b[no_path] = 0.0
+            mask_b    = mask_b.clone();    mask_b[no_path]    = False
+
+        # (B, K, L, D) → sum over L → (B, K, D)
+        emb_seq   = rel_emb[rel_ids_b]
+        path_vecs = (signs_b.unsqueeze(-1) * emb_seq).sum(dim=2)
+        return path_vecs, weights_b, mask_b
 
     def _get_prior_confidence(self, pos_triples, device, dtype):
         if not self._prior_confidence:
@@ -1202,24 +1289,40 @@ class LocalTripleWithPriorAndAdaptivePathLoss(nn.Module):
         return (vec * vec).sum()
 
     def _get_adaptive_confidence(self, pos_triples, model, device, dtype):
+        """Compute AP confidence for each positive triple.
+
+        Fully vectorised: builds (N,K,L) buffers on first call, then uses a
+        single tensor gather + distance op per forward call — zero Python loops
+        in steady state.
+        """
         if not self._path_data or not hasattr(model, "relation_embeddings"):
-            return torch.zeros(len(pos_triples), device = device, dtype = dtype)
-        rel_emb = model.relation_embeddings.weight.detach()
+            return torch.zeros(len(pos_triples), device=device, dtype=dtype)
+
+        rel_emb = model.relation_embeddings.weight.detach()  # (R, D)
         num_relations = rel_emb.shape[0]
-        values = []
-        for triple in pos_triples:
-            path_list = self._path_data.get(tuple(triple))
-            if not path_list:
-                values.append(0.0)
-                continue
-            all_path_conf = 0.0
-            rel_id = int(triple[1])
-            for rel_path, pr in path_list:
-                dist = self._calc_path_distance(rel_id, rel_path, rel_emb, num_relations)
-                all_path_conf += float(pr) / max(float(dist), 1e-12)
-            soft_conf = 1.0 / (1.0 + math.exp(-all_path_conf))
-            values.append(soft_conf)
-        return torch.tensor(values, device = device, dtype = dtype)
+
+        # Build buffers lazily on first call (num_relations known only here).
+        if self._path_rel_ids_buf is None:
+            self._build_path_buffers(num_relations)
+
+        path_vecs, weights, mask = self._gather_path_tensors(
+            pos_triples, rel_emb, device, dtype
+        )  # (B,K,D), (B,K), (B,K)
+
+        rel_ids = torch.tensor([int(t[1]) for t in pos_triples],
+                               device=device, dtype=torch.long)   # (B,)
+        r_embs  = rel_emb[rel_ids]                                # (B, D)
+
+        # d(r, p) = ||r_emb - path_vec|| matching _calc_path_distance exactly.
+        diffs = r_embs.unsqueeze(1) - path_vecs   # (B, K, D)
+        if self.adaptive_use_l1:
+            dists = diffs.abs().sum(dim=-1)        # (B, K)  L1
+        else:
+            dists = (diffs * diffs).sum(dim=-1)    # (B, K)  L2-squared (no sqrt)
+        dists = dists.clamp(min=1e-12)
+
+        accum = (weights / dists * mask.float()).sum(dim=1)   # (B,)
+        return torch.sigmoid(accum)
 
     def forward(self, pred, target, current_epoch = None, x_batch = None, model = None):
         if pred.dim() > 1:
@@ -1278,6 +1381,7 @@ class LocalTripleWithPriorAndAdaptivePathLoss(nn.Module):
             self.local_loss._confidence[tuple(triple)] = new_conf
 
         return loss
+
 
 class general_robust_loss(nn.Module):
 
@@ -1341,7 +1445,7 @@ Losses from the paper: Mitigating Label Noise through Data Ambiguation
 eps = 1e-7 
 
 class GCELoss(nn.Module):
-    def __init__(self, q=0.7):
+    def __init__(self, q=0.2):
         super().__init__()
         self.q = q
         self.eps = eps
@@ -1353,66 +1457,73 @@ class GCELoss(nn.Module):
         loss = (1.0 - torch.pow(p_t, self.q)) / self.q 
         return loss.mean()
 
+# class NCELoss(nn.Module):
+#     def __init__(self, scale = 1.0, eps = 1e-7):
+#         super().__init__()
+#         self.scale = scale 
+#         self.eps = eps
+
+#     def forward(self, pred, target, current_epoch = None):
+#         target = target.float()
+#         p = torch.sigmoid(pred)
+#         p = torch.clamp(p, min=self.eps, max=1.0 - self.eps)
+
+#         p_t = target * p + (1.0 - target) * (1.0 - p)
+#         p_t = torch.clamp(p_t, min=self.eps, max=1.0 - self.eps)
+
+#         numerator = -torch.log(p_t) 
+
+#         denom = -torch.log(p) - torch.log(1.0 - p) 
+#         denom = torch.clamp(denom, min=self.eps)
+
+#         loss = numerator / denom
+
+#         return self.scale * loss.mean() 
+
 class NCELoss(nn.Module):
     def __init__(self, scale = 1.0):
         super().__init__()
-        self.scale = scale 
+        self.scale = float(scale) 
 
     def forward(self, pred, target, current_epoch = None):
-        p = torch.sigmoid(pred)
-        p = torch.clamp(p, min = eps, max = 1.0)
 
-        p_t = target * p + (1.0 - target) * (1 - p)
-        p_t = torch.clamp(p_t, min = eps, max = 1.0 - eps)
-
-        numerator = -torch.log(p_t) 
-
-        denom = -torch.log(p) - torch.log(1.0 - p) 
-        denom = torch.clamp(denom, min = eps)
-
-        loss = self.scale * (numerator / denom) 
-
-        return loss.mean() 
+        target = target.float()
+        log_p = F.log_softmax(pred, dim = -1)
+        num_pos = target.sum(dim = -1)
+        numerator = -(target * log_p).sum(dim = -1) / num_pos
+        denom = -log_p.sum(dim = -1) + 1e-7
+        loss = (numerator / denom)
+        return self.scale * loss.mean()
 
 class NCEandAGCELoss(nn.Module):
-    def __init__(self):
+    def __init__(self, nce_scale=1.0, agce_a=0.1, agce_q=1.0, agce_eps=1e-8, agce_scale=1.0):
         super().__init__()
 
-        self.nce = NCELoss()
-        self.agce = AGCELoss()
-        
+        self.nce = NCELoss(scale=nce_scale)
+        self.agce = AGCELoss(agce_a=agce_a, agce_q=agce_q, eps=agce_eps, scale=agce_scale)
+
     def forward(self, pred, target, current_epoch = None):
-        return self.nce(pred, target, current_epoch = None) + self.agce(pred, target, current_epoch = None)
+        return self.nce(pred, target, current_epoch=current_epoch) + self.agce(pred, target, current_epoch=current_epoch)
 
 class NCEandAULoss(nn.Module):
-    def __init__(self):
+    def __init__(self, nce_scale=1.0, aul_a=2.0, aul_p=1.8, aul_eps=1e-7, aul_scale=1.0):
         super().__init__()
 
-        self.nce = NCELoss() 
-        self.aul = AULoss() 
+        self.nce = NCELoss(scale=nce_scale)
+        self.aul = AULoss(aul_a=aul_a, aul_p=aul_p, eps=aul_eps, scale=aul_scale)
 
     def forward(self, pred, target, current_epoch = None):
-        return self.nce(pred, target, current_epoch = None) + self.aul(pred, target, current_epoch = None)
-
-
-"""
-alpha = 0.1
-adaptive_beta = True
-adaptive_start_beta = 0.75
-adaptive_end_beta = 0.6
-adaptive_type = "cosine"
-warmup = False
-"""
+        return self.nce(pred, target, current_epoch=current_epoch) + self.aul(pred, target, current_epoch=current_epoch)
 
 class RDALoss(nn.Module):
     def __init__(
-        self, alpha_rda = 0.1, beta_rda = 0.2, adaptive_beta = True, epochs = None, warmup = True, adaptive_start_beta = None,
-        adaptive_end_beta = None, adaptive_type = "cosine", eps = 1e-8
+        self, alpha_rda = 0.1, beta_rda = 0.2, adaptive_beta = True, epochs = None, warmup = False, adaptive_start_beta = None,
+        adaptive_end_beta = None, adaptive_type = "cosine", eps = 1e-8, warmup_epochs = 0
     ):
 
         super().__init__()
         self.alpha_rda = max(alpha_rda,1e-6) #relaxation parameter
-        self.beta_rda = beta_rda #confidence threshold
+        self.beta_rda = beta_rda #confidence threshold,60 atleast
         self.adaptive_beta = adaptive_beta
         self.epochs = epochs
         self.warmup = warmup
@@ -1420,6 +1531,7 @@ class RDALoss(nn.Module):
         self.end_beta = adaptive_end_beta
         self.adaptive_type = adaptive_type
         self.eps = eps
+        self.warmup_epochs = warmup_epochs
 
         if self.adaptive_beta: 
             assert self.epochs is not None 
@@ -1432,52 +1544,189 @@ class RDALoss(nn.Module):
         if epoch is None:
             return None 
         if self.adaptive_type == "linear":
-            return (1 - epoch / self.epochs) * self.start_beta + (epoch / self.epochs) * self.end_beta
+            return (1.0 - epoch / self.epochs) * self.start_beta + (epoch / self.epochs) * self.end_beta
         elif self.adaptive_type == "cosine":
             return self.end_beta + 0.5 * (self.start_beta - self.end_beta) * (1.0 + torch.cos(torch.tensor(torch.pi * epoch / self.epochs))).item() 
         else:
             raise ValueError(f"Unknown adaptive beta type: {self.adaptive_type}")
+    
+    @staticmethod
+    def _kl_div(q, p, eps):
+        q = torch.clamp(q, min = eps, max = 1.0 - eps)
+        p = torch.clamp(p, min = eps, max = 1.0 - eps)
+        return q * (torch.log(q) - torch.log(p)) + (1.0 - q) * (torch.log(1.0 - q) - torch.log(1.0 - p))
 
     def forward(self, pred, target, current_epoch = None):
 
         pred = torch.sigmoid(pred)
         pred = torch.clamp(pred, min = self.eps, max = 1.0 - self.eps) 
 
-        if self.adaptive_beta:
-            beta = self._get_beta(current_epoch)
-            if beta is None:
-                suspicious_neg = torch.zeros_like(target, dtype = torch.bool)
-            else:
-                suspicious_neg = (target == 0) & (pred > beta) #Flags negatives that look suspiciously high-confidence
+        # if self.adaptive_beta:
+        #     beta = self._get_beta(current_epoch)
+        #     if beta is None:
+        #         suspicious_neg = torch.zeros_like(target, dtype = torch.bool)
+        #     else:
+        #         suspicious_neg = (target == 0) & (pred > beta) #Flags negatives that look suspiciously high-confidence
+        # else:
+        #     if self.warmup:
+        #         suspicious_neg = torch.zeros_like(target, dtype=torch.bool)
+        #     else:
+        #         suspicious_neg = (target == 0) & (pred > self.beta_rda)
+
+        # inside_pos = (target == 1) & (pred >= 1.0 - self.alpha_rda)  #clean positives
+        # inside_neg = (target == 0) & (~suspicious_neg) & (pred <= self.alpha_rda) #clean and confidently negative entries
+        # inside_amb = suspicious_neg #ambigious ones
+
+        # # Loss is zero if sample is:
+        # # a confident enough positive
+        # # a confident enough negative
+        # # or an ambiguous negative
+        # inside = inside_pos | inside_neg | inside_amb 
+
+        # q_r = torch.where(
+        #     target == 1,
+        #     torch.full_like(pred, 1.0 - self.alpha_rda),   #replaces hard labels {1, 0} with softened targets {1-alpha, alpha}
+        #     torch.full_like(pred, self.alpha_rda)
+        # )
+
+        # q_r = torch.clamp(q_r, min=self.eps, max=1.0 - self.eps)
+
+        # #KL(Bernoulli(q_r) || Bernoulli(pred))
+        # kl = (q_r * (torch.log(q_r) - torch.log(pred)) + (1.0 - q_r) * (torch.log(1.0 - q_r) - torch.log(1.0 - pred)))
+
+        # loss = torch.where(inside, torch.zeros_like(kl), kl)
+        # return loss.mean()
+
+        beta = self._get_beta(current_epoch)
+
+        warmup_active = self.warmup and (current_epoch is not None) and (current_epoch < self.warmup_epochs)
+
+        if warmup_active:
+            suspicious_neg = torch.zeros_like(target, dtype = torch.bool)
         else:
-            if self.warmup:
-                suspicious_neg = torch.zeros_like(target, dtype=torch.bool)
-            else:
-                suspicious_neg = (target == 0) & (pred > self.beta_rda)
+            suspicious_neg = (target == 0) & (pred > beta)
+        
+        pos_mask = (target == 1)
+        neg_mask = (target == 0)
+        clean_neg_mask = neg_mask & (~suspicious_neg)
 
-        inside_pos = (target == 1) & (pred >= 1.0 - self.alpha_rda)  #clean positives
-        inside_neg = (target == 0) & (~suspicious_neg) & (pred <= self.alpha_rda) #clean and confidently negative entries
-        inside_amb = suspicious_neg #ambigious ones
+        q_r = torch.empty_like(pred)
 
-        # Loss is zero if sample is:
-        # a confident enough positive
-        # a confident enough negative
-        # or an ambiguous negative
-        inside = inside_pos | inside_neg | inside_amb 
+        # positives: must be at least 1-alpha
+        q_r[pos_mask] = torch.clamp(pred[pos_mask], min=1.0 - self.alpha_rda, max=1.0)
 
-        q_r = torch.where(
-            target == 1,
-            torch.full_like(pred, 1.0 - self.alpha_rda),   #replaces hard labels {1, 0} with softened targets {1-alpha, alpha}
-            torch.full_like(pred, self.alpha_rda)
-        )
+        # clean negatives: should stay near 0, up to alpha
+        q_r[clean_neg_mask] = torch.clamp(pred[clean_neg_mask], min=0.0, max=self.alpha_rda)
 
-        q_r = torch.clamp(q_r, min=self.eps, max=1.0 - self.eps)
+        # suspicious negatives: relaxed negatives, allowed up to beta
+        q_r[suspicious_neg] = torch.clamp(pred[suspicious_neg], min=0.0, max=beta)
 
-        #KL(Bernoulli(q_r) || Bernoulli(pred))
-        kl = (q_r * (torch.log(q_r) - torch.log(pred)) + (1.0 - q_r) * (torch.log(1.0 - q_r) - torch.log(1.0 - pred)))
+        # KL(Bern(q_r) || Bern(prob))
+        kl = self._kl_div(q_r, pred, self.eps)
 
-        loss = torch.where(inside, torch.zeros_like(kl), kl)
-        return loss.mean()
+        return kl.mean()
+
+#End of losses from Mitigating Label Noise through Data Ambiguation
+
+#RDA + Waveloss, RDA + RoBoss  
+
+class RDARoBossLoss(nn.Module):
+
+    def __init__(
+            self, a = 1.5, lambda_r = 1.0, beta_start = 0.75, beta_end = 0.60, total_epochs = None, beta_fixed = None, eps = 1e-8 
+    ):
+        super().__init__()
+        self.a = a
+        self.lambda_r = lambda_r
+        self.beta_start = beta_start
+        self.beta_end = beta_end
+        self.total_epochs = total_epochs
+        self.beta_fixed = beta_fixed
+        self.eps = eps
+    
+    def _get_beta(self, current_epoch):
+        if self.beta_fixed is not None:
+            return self.beta_fixed
+        if current_epoch is None or self.total_epochs is None or self.total_epochs <= 0:
+            return self.beta_start
+        t = min(max(int(current_epoch), 0), int(self.total_epochs))
+        cos = math.cos(math.pi * t / float(self.total_epochs))
+        return self.beta_end + 0.5 * (self.beta_start - self.beta_end) * (1 + cos)
+    
+    def forward(self, pred, target, current_epoch = None):
+        pred_dtype = pred.dtype
+        target = target.float()
+        prob = torch.sigmoid(pred.float())
+        prob = torch.clamp(prob, min = self.eps, max = 1.0 - self.eps)
+
+        p_true = target * prob + (1.0 - target) * (1.0 - prob)
+
+        u = 1.0 - p_true #model's probability on the correct label — the probabilistic analogue of target·pred
+
+        beta = max(self._get_beta(current_epoch), self.eps)
+
+# TARGET SEPARATION LOGIC
+        # If target == 0, we gate based on how high the raw probability is.
+        # If target == 1, we typically retain full structural loss (s=1.0) to enforce learning true facts.
+
+        s_neg = torch.clamp(1.0 - (prob.detach() / beta), min = 0.0)
+        s = torch.where(target == 0.0, s_neg, torch.ones_like(prob)) #if tar == 0 use gating, else tar == 1, s = 1.0
+
+        lambda_dyn = self.lambda_r * s 
+        exp = -self.a * u 
+        loss = lambda_dyn * (1.0 - (self.a * u + 1.0) * torch.exp(exp))
+
+# Explicitly zero out fully ambiguated targets to prevent floating point residual gradients
+        loss = torch.where(s > 0, loss, torch.zeros_like(loss))
+
+        return loss.mean().to(pred_dtype)
+
+class RDAWaveLoss(nn.Module):
+    
+    def __init__(
+            self, a = 1.5, lambda_w = 1.0, beta_start = 0.75, beta_end = 0.60, total_epochs = None, beta_fixed = None, eps = 1e-8 
+    ):
+        super().__init__()
+        self.a = a
+        self.lambda_w = lambda_w
+        self.beta_start = beta_start
+        self.beta_end = beta_end
+        self.total_epochs = total_epochs
+        self.beta_fixed = beta_fixed
+        self.eps = eps
+    
+    def _get_beta(self, current_epoch):
+        if self.beta_fixed is not None:
+            return self.beta_fixed
+        if current_epoch is None or self.total_epochs is None or self.total_epochs <= 0:
+            return self.beta_start
+        t = min(max(int(current_epoch), 0), int(self.total_epochs))
+        cos = math.cos(math.pi * t / float(self.total_epochs))
+        return self.beta_end + 0.5 * (self.beta_start - self.beta_end) * (1 + cos)
+    
+    def forward(self, pred, target, current_epoch = None):
+        pred_dtype = pred.dtype
+        target = target.float()
+        prob = torch.sigmoid(pred.float())
+        prob = torch.clamp(prob, min = self.eps, max = 1.0 - self.eps)
+
+        p_true = target * prob + (1.0 - target) * (1.0 - prob)
+
+        u = 1.0 - p_true
+
+        beta = max(self._get_beta(current_epoch), self.eps)
+
+        s_neg = torch.clamp(1.0 - (prob.detach() / beta), min = 0.0)
+        s = torch.where(target == 0.0, s_neg, torch.ones_like(prob)) #if tar == 0 use gating, else tar == 1, s = 1.0
+
+        lambda_dyn = self.lambda_w / (s + self.eps) 
+        exp = -self.a * u 
+        denom = 1.0 + lambda_dyn * (u ** 2) * torch.exp(exp)
+        loss = (1.0 / lambda_dyn) * (1.0 - 1.0 / denom)
+
+        loss = torch.where(s > 0, loss, torch.zeros_like(loss))
+
+        return loss.mean().to(pred_dtype)
 
 class CORESLoss(nn.Module):
     def __init__(self, beta_max = 2.0, warmup_epochs = 30, eps = 1e-8):
@@ -1513,28 +1762,1040 @@ class CORESLoss(nn.Module):
 
         loss = (mask * loss_per_sample).sum() / mask.sum().clamp_min(1.0)
         return loss 
+
+class DSKRLLoss(nn.Module):
+    """
+    DSKRL (Shao et al., 2021) loss:
+      Loss(h,r,t) = (L(h,r,t) + (1 / Z) * sum_p R(p|h,t) * L(p,r)) * S(h,r,t)
+
+    Paper-faithful defaults:
+      L(h,r,t) = max(0, margin + PT(pos) - PT(neg))                    (Eq. 13/14)
+      PT(h,r,t) = EHT(h,r,t) + RP(h,P,t)                               (Eq. 6)
+      EHT(h,r,t) = || T_h + r - T_t ||_2                               (Eq. 4)
+        with T_e = Σ_i α_i (M_type[t_i] · M_domain[d_i]) · e_emb       (Eq. 2 + Eq. 3)
+        where (t_i, d_i, α_i) are entity e's own types (loaded from
+        entityTypes.txt). Falls back to a relation-keyed encoder when
+        entity-typed data is not available.
+      S(h,r,t)  = k1 * LS(h,r,t) + k2 * DPS(h,r,t)                     (Eq. 12)
+      L(p,r)    = max(0, path_margin + ||p - r|| - ||p - r'||)         (Eq. 15)
+      LS update: LS <- gamma * LS  iff Q(h,r,t) <= 0                   (Eq. 8-9)
+      DPS = sigmoid( sum_p R(p|h,t) / ||r - p||_2 )                    (Eq. 11)
+
+    `use_native_score=True` opts back into using the model's native score
+    inside L(h,r,t) (faster, lets training/eval geometries match) -- not
+    paper-faithful.
+    """
+
+    requires_x_batch = True
+    requires_model = True
+    _VALID_ABLATION_MODES = {"full", "ls", "pt", "eht"}
+    _VALID_TYPE_COMBINE_MODES = {"chain", "weighted_sum"}
+
+    def __init__(
+        self,
+        margin=1.0,
+        local_decay_gamma=0.9,
+        path_margin=1.0,
+        positive_threshold=0.5,
+        use_max_negative=True,
+        score_is_distance=False,
+        support_k1=0.6,
+        support_k2=0.4,
+        dps_use_l1=False,
+        num_entities=None,
+        num_relations=None,
+        embedding_dim=None,
+        eps=1e-12,
+        ablation_mode="full",
+        use_native_score=False,
+        use_native_score_for_ls=False,
+        max_paths_per_triple=30,
+        type_combine_mode="weighted_sum",
+    ):
+        super().__init__()
+        self.margin = float(margin)
+        self.local_decay_gamma = float(local_decay_gamma)
+        self.path_margin = float(path_margin)
+        self.positive_threshold = float(positive_threshold)
+        self.use_max_negative = bool(use_max_negative)
+        self.score_is_distance = bool(score_is_distance)
+        self.support_k1 = float(support_k1)
+        self.support_k2 = float(support_k2)
+        self.dps_use_l1 = bool(dps_use_l1)
+        self.eps = float(eps)
+        self.num_relations = int(num_relations) if num_relations is not None else None
+        self.embedding_dim = int(embedding_dim) if embedding_dim is not None else None
+        self.ablation_mode = str(ablation_mode).lower()
+        self.use_native_score = bool(use_native_score)
+        self.use_native_score_for_ls = (
+            self.use_native_score if use_native_score_for_ls is None else bool(use_native_score_for_ls)
+        )
+        self.type_combine_mode = str(type_combine_mode).lower()
+        if self.type_combine_mode not in self._VALID_TYPE_COMBINE_MODES:
+            raise RuntimeError(
+                f"Unsupported DSKRL type_combine_mode={self.type_combine_mode!r}. "
+                f"Choose one of {sorted(self._VALID_TYPE_COMBINE_MODES)}."
+            )
+        # max_paths_per_triple: keep only the top-K most reliable paths per triple
+        # to bound per-forward-pass cost; None / 0 = keep all paths.
+        self.max_paths_per_triple = int(max_paths_per_triple) if max_paths_per_triple else None
+        self._local_support: Dict[tuple, float] = {}
+        self._path_data: Dict[tuple, List] = {}
+        # Pre-built (N, K, L) buffers for zero-Python-loop forward pass.
+        # Populated by _build_path_buffers() when set_path_data() is called.
+        self._path_rel_ids_buf      = None   # (N, K, L) long
+        self._path_signs_buf        = None   # (N, K, L) float32
+        self._path_weights_buf      = None   # (N, K)    float32 -- normalised R/Z (RP, L(p,r))
+        self._path_weights_raw_buf  = None   # (N, K)    float32 -- raw R(p|h,t) (DPS)
+        self._path_mask_buf         = None   # (N, K)    bool
+        self._path_triple_to_idx: dict = {}
+        self._aux_ready = False
+        self._num_types = 0
+        self._num_domains = 0
+        # Per-entity type buffers (_entity_*_buf) are registered below so they
+        # are moved by model.to(device). They are zero-sized until
+        # set_aux_data populates them with per-entity types (Eq. 2).
+
+        if self.num_relations is None or self.embedding_dim is None:
+            raise RuntimeError("DSKRLLoss requires num_relations and embedding_dim.")
+        if self.ablation_mode not in self._VALID_ABLATION_MODES:
+            raise RuntimeError(
+                f"Unsupported DSKRL ablation_mode={self.ablation_mode!r}. "
+                f"Choose one of {sorted(self._VALID_ABLATION_MODES)}."
+            )
+
+        self.domain_mats = None
+        self.type_mats = None
+        self.register_buffer("_head_type_ids", torch.full((self.num_relations,), -1, dtype=torch.long), persistent=False)
+        self.register_buffer("_tail_type_ids", torch.full((self.num_relations,), -1, dtype=torch.long), persistent=False)
+        self.register_buffer("_head_domain_ids", torch.full((self.num_relations,), -1, dtype=torch.long), persistent=False)
+        self.register_buffer("_tail_domain_ids", torch.full((self.num_relations,), -1, dtype=torch.long), persistent=False)
+        # Per-entity type buffers — registered so model.to(device) migrates them.
+        # Empty (E=0, K=0) until set_aux_data is called with entity_types.
+        self.register_buffer("_entity_type_ids_buf",     torch.zeros(0, 0, dtype=torch.long),    persistent=False)
+        self.register_buffer("_entity_domain_ids_buf",   torch.zeros(0, 0, dtype=torch.long),    persistent=False)
+        self.register_buffer("_entity_type_weights_buf", torch.zeros(0, 0, dtype=torch.float32), persistent=False)
+        self.register_buffer("_entity_type_mask_buf",    torch.zeros(0, 0, dtype=torch.bool),    persistent=False)
+
+    def set_path_data(self, path_data):
+        """Store path data and pre-build fixed-size tensors for a zero-Python-loop forward pass.
+
+        The tensors built here allow the three path-energy functions to replace
+        their outer Python loop (one iteration per batch triple) with a single
+        tensor gather + einsum — O(1) Python per forward call.
+        """
+        if not path_data:
+            self._path_data = {}
+            self._path_rel_ids_buf = None   # signals "no path data" to callers
+            return
+        cap = self.max_paths_per_triple
+        if cap and cap > 0:
+            self._path_data = {
+                k: sorted(v, key=lambda x: -float(x[1]))[:cap]
+                for k, v in path_data.items()
+            }
+        else:
+            self._path_data = path_data
+        self._build_path_buffers()
+
+    def _build_path_buffers(self):
+        """Pre-build (N, K, L) numpy arrays from ``self._path_data``.
+
+        Symbols
+        -------
+        N : number of triples that have at least one path
+        K : max paths per triple  (== self.max_paths_per_triple when capped)
+        L : max path length in hops (usually 1 or 2 for PCRA)
+        """
+        import numpy as np
+        triples_list = list(self._path_data.keys())
+        N = len(triples_list)
+        K = max(len(v) for v in self._path_data.values())
+        L = max(
+            (len(p) for v in self._path_data.values() for p, _ in v),
+            default=1,
+        )
+        L = max(L, 1)
+        num_rel = self.num_relations
+
+        rel_ids     = np.zeros((N, K, L), dtype=np.int64)   # relation indices (base, always < R)
+        signs       = np.zeros((N, K, L), dtype=np.float32) # 0 for padding; set to ±1 per hop below
+        weights     = np.zeros((N, K),    dtype=np.float32) # normalised reliability R/Z (RP, L(p,r))
+        weights_raw = np.zeros((N, K),    dtype=np.float32) # raw R(p|h,t) (DPS, Eq. 11)
+        mask        = np.zeros((N, K),    dtype=np.bool_)   # True for valid paths
+
+        self._path_triple_to_idx: dict = {}
+        for i, triple in enumerate(triples_list):
+            self._path_triple_to_idx[triple] = i
+            path_list = self._path_data[triple]
+            z = sum(float(r) for _, r in path_list)
+            if z <= 0:
+                continue
+            for j, (rel_path, reliability) in enumerate(path_list):
+                for l, pid in enumerate(rel_path):
+                    pid = int(pid)
+                    if pid < num_rel:
+                        rel_ids[i, j, l] = pid
+                        signs[i, j, l]   = 1.0
+                    else:
+                        rel_ids[i, j, l] = pid - num_rel
+                        signs[i, j, l]   = -1.0
+                weights[i, j]     = float(reliability) / z
+                weights_raw[i, j] = float(reliability)
+                mask[i, j]        = True
+
+        # Store as CPU tensors; moved to the correct device on first use.
+        self._path_rel_ids_buf     = torch.from_numpy(rel_ids)      # (N, K, L) long
+        self._path_signs_buf       = torch.from_numpy(signs)        # (N, K, L) float32
+        self._path_weights_buf     = torch.from_numpy(weights)      # (N, K)    float32 -- R/Z
+        self._path_weights_raw_buf = torch.from_numpy(weights_raw)  # (N, K)    float32 -- raw R
+        self._path_mask_buf        = torch.from_numpy(mask)         # (N, K)    bool
+
+    def _gather_path_tensors(self, batch_triples_list, rel_emb, device, dtype):
+        """Look up pre-built buffers for a batch and compute path vectors.
+
+        The only Python iteration is O(B) dict lookups to build the index
+        array; everything else is pure tensor ops (gather + einsum).
+
+        Returns
+        -------
+        path_vecs   : (B, K, D)  -- path embedding vectors  (sum of relation embeddings, sign-aware)
+        weights     : (B, K)     -- normalised reliability  R(p|h,t) / Z   (RP, L(p,r))
+        weights_raw : (B, K)     -- raw reliability         R(p|h,t)       (DPS, Eq. 11)
+        mask        : (B, K)     -- True for valid (non-padding) paths
+        """
+        # O(B) dict lookups — cheap
+        raw_idx = [self._path_triple_to_idx.get(tuple(t), -1)
+                   for t in batch_triples_list]
+        has_paths  = torch.tensor([i >= 0 for i in raw_idx], device=device)   # (B,)
+        safe_idx   = torch.tensor([i if i >= 0 else 0 for i in raw_idx],
+                                  dtype=torch.long)                            # (B,)
+
+        # Gather from CPU buffers → device in one op each
+        rel_ids_b     = self._path_rel_ids_buf[safe_idx].to(device)            # (B, K, L)
+        signs_b       = self._path_signs_buf[safe_idx].to(device, dtype)       # (B, K, L)
+        weights_b     = self._path_weights_buf[safe_idx].to(device, dtype)     # (B, K)
+        weights_raw_b = self._path_weights_raw_buf[safe_idx].to(device, dtype) # (B, K)
+        mask_b        = self._path_mask_buf[safe_idx].to(device)               # (B, K)
+
+        # Zero out rows for triples with no path entry
+        if not has_paths.all():
+            no_path       = ~has_paths          # (B,)
+            weights_b     = weights_b.clone()
+            weights_raw_b = weights_raw_b.clone()
+            mask_b        = mask_b.clone()
+            weights_b[no_path]     = 0.0
+            weights_raw_b[no_path] = 0.0
+            mask_b[no_path]        = False
+
+        # Compute path vectors via a single gather + einsum:
+        #   rel_emb[rel_ids_b] : (B, K, L, D)
+        #   signs_b            : (B, K, L)  → unsqueeze → (B, K, L, 1)
+        #   product.sum(L)     : (B, K, D)
+        emb_seq   = rel_emb[rel_ids_b]                           # (B, K, L, D)
+        path_vecs = (signs_b.unsqueeze(-1) * emb_seq).sum(dim=2) # (B, K, D)
+
+        return path_vecs, weights_b, weights_raw_b, mask_b
+
+    def set_aux_data(self, aux_data):
+        # Store type/domain metadata used to project entities before
+        # computing EHT(h,r,t) and LS(h,r,t).
+        #
+        # Two formats are accepted:
+        #
+        # (a) relation-keyed (TKRL-style, fallback): one (head_type, head_domain,
+        #     tail_type, tail_domain) tuple per relation. Eq. 2 collapses to n=1.
+        #
+        # (b) entity-keyed (paper-faithful, preferred when available): a list of
+        #     (type_id, domain_id, weight) tuples per entity. The encoder
+        #     computes T_e = Σ_i α_i (M_type · M_domain) (Eq. 2 + Eq. 3) and
+        #     uses the same T_e regardless of head/tail role.
+        if not aux_data:
+            self._num_types = 0
+            self._num_domains = 0
+            self.domain_mats = None
+            self.type_mats = None
+            self._aux_ready = False
+            self._clear_entity_type_buffers()
+            return
+
+        self._num_types = int(aux_data.get("num_types", 0))
+        self._num_domains = int(aux_data.get("num_domains", 0))
+        self._head_type_ids = torch.as_tensor(aux_data.get("head_type_ids", [-1] * self.num_relations), dtype=torch.long)
+        self._tail_type_ids = torch.as_tensor(aux_data.get("tail_type_ids", [-1] * self.num_relations), dtype=torch.long)
+        self._head_domain_ids = torch.as_tensor(aux_data.get("head_domain_ids", [-1] * self.num_relations), dtype=torch.long)
+        self._tail_domain_ids = torch.as_tensor(aux_data.get("tail_domain_ids", [-1] * self.num_relations), dtype=torch.long)
+
+        # Build per-entity type buffers (format b) when provided.
+        entity_types = aux_data.get("entity_types")
+        if entity_types:
+            self._build_entity_type_buffers(entity_types)
+        else:
+            self._clear_entity_type_buffers()
+
+        self._init_aux_parameters()
+
+    def _clear_entity_type_buffers(self):
+        # Replace the registered buffers with empty (0, 0) tensors so
+        # ``has_entity_types()`` (via .numel() == 0) flips back to False
+        # while keeping them registered for module.to(device).
+        device = self._entity_type_ids_buf.device
+        self._entity_type_ids_buf     = torch.zeros(0, 0, dtype=torch.long,    device=device)
+        self._entity_domain_ids_buf   = torch.zeros(0, 0, dtype=torch.long,    device=device)
+        self._entity_type_weights_buf = torch.zeros(0, 0, dtype=torch.float32, device=device)
+        self._entity_type_mask_buf    = torch.zeros(0, 0, dtype=torch.bool,    device=device)
+
+    def _build_entity_type_buffers(self, entity_types):
+        """Build padded (E, K) tensors of per-entity type chains for Eq. 2.
+
+        ``entity_types`` is a list indexed by entity id; each element is a list
+        of ``(type_id, domain_id, weight)`` triples (any of which may be -1
+        when missing).
+        """
+        import numpy as np
+        E = len(entity_types)
+        K = max((len(ts) for ts in entity_types), default=0)
+        if E == 0 or K == 0:
+            self._clear_entity_type_buffers()
+            return
+
+        type_ids   = np.full((E, K), -1, dtype=np.int64)
+        domain_ids = np.full((E, K), -1, dtype=np.int64)
+        weights    = np.zeros((E, K),     dtype=np.float32)
+        mask       = np.zeros((E, K),     dtype=np.bool_)
+
+        for e, triples in enumerate(entity_types):
+            total = sum(float(w) for _, _, w in triples) or 0.0
+            if total <= 0:
+                continue
+            for k, (t_id, d_id, w) in enumerate(triples):
+                type_ids[e, k]   = int(t_id)
+                domain_ids[e, k] = int(d_id)
+                weights[e, k]    = float(w) / total
+                mask[e, k]       = True
+
+        device = self._entity_type_ids_buf.device
+        self._entity_type_ids_buf     = torch.from_numpy(type_ids).to(device)
+        self._entity_domain_ids_buf   = torch.from_numpy(domain_ids).to(device)
+        self._entity_type_weights_buf = torch.from_numpy(weights).to(device)
+        self._entity_type_mask_buf    = torch.from_numpy(mask).to(device)
+
+    @staticmethod
+    def _resolve_target(pred, target):
+        # Helper only: recover the binary labels y used to split positive and
+        # negative triples in a NegSample batch.
+        if torch.is_tensor(target):
+            return target
+        if isinstance(target, (list, tuple)):
+            tensors = [item for item in target if torch.is_tensor(item)]
+            if tensors:
+                if pred is not None:
+                    for item in tensors:
+                        if item.numel() == pred.numel():
+                            return item
+                return tensors[-1]
+        raise RuntimeError("DSKRLLoss expects target to be a torch.Tensor.")
+
+    def _scores_to_energy(self, scores):
+        # DSKRL is written in energy form, where smaller is better.
+        # This helper converts model scores into energies when needed.
+        if self.score_is_distance:
+            return scores
+        return -scores
+
+    def _pair_negative_scores(self, pos_scores, neg_scores):
+        # Higher native scores are assumed to mean more plausible triples unless
+        # score_is_distance=True. The hardest negative therefore has the largest
+        # score for score models, and the smallest value for distance models.
+        pos_count = pos_scores.numel()
+        neg_count = neg_scores.numel()
+        if neg_count % pos_count == 0:
+            neg_ratio = neg_count // pos_count
+            neg_scores = neg_scores.view(neg_ratio, pos_count)
+            if self.use_max_negative:
+                if self.score_is_distance:
+                    return neg_scores.min(dim=0).values
+                return neg_scores.max(dim=0).values
+            return neg_scores.mean(dim=0)
+        if self.use_max_negative:
+            neg_value = neg_scores.min() if self.score_is_distance else neg_scores.max()
+        else:
+            neg_value = neg_scores.mean()
+        return neg_value.expand_as(pos_scores)
+
+    def _pair_negative_energies(self, pos_energies, neg_energies):
+        # DSKRL energy terms are lower-is-better, so the hardest negative is the
+        # one with the smallest energy.
+        pos_count = pos_energies.numel()
+        neg_count = neg_energies.numel()
+        if neg_count % pos_count == 0:
+            neg_ratio = neg_count // pos_count
+            neg_energies = neg_energies.view(neg_ratio, pos_count)
+            if self.use_max_negative:
+                return neg_energies.min(dim=0).values
+            return neg_energies.mean(dim=0)
+        neg_value = neg_energies.min() if self.use_max_negative else neg_energies.mean()
+        return neg_value.expand_as(pos_energies)
+
+    def _relation_path_vector(self, rel_path, rel_emb, num_relations):
+        # Kept for backward-compatibility; not called in the normal forward path.
+        pids  = rel_emb.new_tensor(rel_path, dtype=torch.long)
+        fwd   = pids < num_relations
+        base  = torch.where(fwd, pids, pids - num_relations)
+        signs = torch.where(fwd, rel_emb.new_ones(len(pids)), -rel_emb.new_ones(len(pids)))
+        return (signs.unsqueeze(1) * rel_emb[base]).sum(0)
+
+    def _distance(self, x):
+        # Distance used by all DSKRL energy terms:
+        # d(x) = ||x||_2 by default, or ||x||_1 when configured.
+        if self.dps_use_l1:
+            return x.abs().sum(dim=-1)
+        return torch.sqrt(torch.clamp((x * x).sum(dim=-1), min=self.eps))
+
+    def _init_aux_parameters(self):
+        # Trainable type / domain projection matrices used to build T_e (Eq. 2-3).
+        if self._aux_ready:
+            return
+        if self._num_domains > 0:
+            domain_eye = torch.eye(self.embedding_dim).unsqueeze(0).repeat(self._num_domains, 1, 1)
+            self.domain_mats = nn.Parameter(domain_eye)
+        if self._num_types > 0:
+            type_eye = torch.eye(self.embedding_dim).unsqueeze(0).repeat(self._num_types, 1, 1)
+            self.type_mats = nn.Parameter(type_eye)
+        # Learnable α weights for the two-component weighted-sum encoder (Eq. 2).
+        # The softmax over this 2-vector gives (α_type, α_domain) summing to 1.
+        # Initialised to (1, 1) -> equal weight after softmax.
+        self._type_mix_logits = nn.Parameter(torch.zeros(2))
+        self._aux_ready = True
+
+    def _project_entities(self, entity_emb, domain_ids, type_ids, entity_ids=None):
+        # Build T_e per entity and project: e_proj = T_e @ e_emb.
+        #
+        # When per-entity type data is loaded (Eq. 2 + Eq. 3, paper-faithful):
+        #     T_e = Σ_i α_i (M_type[t_i] @ M_domain[d_i])
+        # uses the entity's own list of (type, domain, weight) triples and
+        # ignores ``domain_ids`` / ``type_ids`` (which are relation-keyed).
+        #
+        # Otherwise we fall back to the relation-keyed encoder:
+        #   type_combine_mode="weighted_sum"  (Eq. 2, n=2, m=1):
+        #     T_e = α_type * M_type[t_id] + α_domain * M_domain[d_id]
+        #   type_combine_mode="chain"         (Eq. 3, n=1, m=2):
+        #     T_e = M_type[t_id] @ M_domain[d_id]
+        if self.domain_mats is None and self.type_mats is None:
+            return entity_emb
+        if entity_ids is not None and self._entity_type_ids_buf.numel() > 0:
+            return self._project_entities_by_entity(entity_emb, entity_ids)
+        if self.type_combine_mode == "weighted_sum":
+            return self._project_weighted_sum(entity_emb, domain_ids, type_ids)
+        return self._project_chain(entity_emb, domain_ids, type_ids)
+
+    def _project_entities_by_entity(self, entity_emb, entity_ids):
+        # Paper-faithful encoder (Eq. 2 + Eq. 3):
+        #   for each entity e (with K' valid (type_i, domain_i, α_i) triples):
+        #     v_i   = M_type[t_i] · M_domain[d_i] · e_emb        (Eq. 3, m=2)
+        #     e_proj = Σ_i α_i · v_i                              (Eq. 2)
+        # The (type, domain) chain follows TKRL's TKRL/WHE projection: apply
+        # domain first (coarse) then type (fine), per the paper's "first
+        # mapped to the more general sub-type space ... then sequentially
+        # mapped to the more precise sub-type space".
+        device = entity_emb.device
+        dtype  = entity_emb.dtype
+        B, D = entity_emb.shape
+
+        # Buffers are registered, so they already live on `device`.
+        type_ids   = self._entity_type_ids_buf[entity_ids]                  # (B, K)
+        domain_ids = self._entity_domain_ids_buf[entity_ids]                # (B, K)
+        weights    = self._entity_type_weights_buf[entity_ids].to(dtype)    # (B, K)
+        mask       = self._entity_type_mask_buf[entity_ids]                 # (B, K)
+        K = type_ids.shape[1]
+
+        # Flatten over (B*K) for batched matmul.
+        type_flat   = type_ids.reshape(-1).clamp(min=0)                       # (B*K,)
+        domain_flat = domain_ids.reshape(-1).clamp(min=0)                     # (B*K,)
+        has_type    = (type_ids   >= 0).to(dtype)                             # (B, K)
+        has_domain  = (domain_ids >= 0).to(dtype)                             # (B, K)
+
+        I = torch.eye(D, device=device, dtype=dtype)                          # (D, D)
+
+        # Per-slot matrices (B*K, D, D). When type / domain is -1 use identity
+        # so that branch becomes a no-op in the chain.
+        if self.type_mats is not None:
+            type_mats_flat = self.type_mats[type_flat]                        # (B*K, D, D)
+        else:
+            type_mats_flat = I.expand(B * K, D, D)
+        if self.domain_mats is not None:
+            domain_mats_flat = self.domain_mats[domain_flat]                  # (B*K, D, D)
+        else:
+            domain_mats_flat = I.expand(B * K, D, D)
+
+        has_type_flat   = has_type.reshape(-1, 1, 1)                          # (B*K, 1, 1)
+        has_domain_flat = has_domain.reshape(-1, 1, 1)                        # (B*K, 1, 1)
+        I_exp = I.expand(B * K, D, D)
+        type_mats_flat   = has_type_flat   * type_mats_flat   + (1.0 - has_type_flat)   * I_exp
+        domain_mats_flat = has_domain_flat * domain_mats_flat + (1.0 - has_domain_flat) * I_exp
+
+        # Chain: project domain first, then type (Eq. 3 with m=2).
+        # .contiguous() ensures the expand-view is safe to reshape on all torch versions.
+        e_rep = entity_emb.unsqueeze(1).expand(B, K, D).contiguous().view(B * K, D, 1)  # (B*K, D, 1)
+        domain_proj = torch.bmm(domain_mats_flat, e_rep)                      # (B*K, D, 1)
+        type_proj   = torch.bmm(type_mats_flat, domain_proj)                  # (B*K, D, 1)
+        v = type_proj.squeeze(-1).reshape(B, K, D)                            # (B, K, D)
+
+        # Weighted sum over the entity's types (Eq. 2). `weights` already sums
+        # to 1 over valid slots per entity.
+        masked_weights = weights * mask.to(dtype)                             # (B, K)
+        e_proj = (masked_weights.unsqueeze(-1) * v).sum(dim=1)                # (B, D)
+
+        # Entities with no type info fall back to the raw embedding.
+        any_valid = mask.any(dim=1).to(dtype).unsqueeze(-1)                   # (B, 1)
+        return any_valid * e_proj + (1.0 - any_valid) * entity_emb
+
+    def _project_chain(self, entity_emb, domain_ids, type_ids):
+        # Eq. 3 form: e -> M_domain · e -> M_type · (M_domain · e)
+        projected = entity_emb
+        if self.domain_mats is not None:
+            valid_domain = domain_ids >= 0
+            if valid_domain.any():
+                projected = projected.clone()
+                projected[valid_domain] = torch.bmm(
+                    self.domain_mats[domain_ids[valid_domain]],
+                    projected[valid_domain].unsqueeze(-1),
+                ).squeeze(-1)
+        if self.type_mats is not None:
+            valid_type = type_ids >= 0
+            if valid_type.any():
+                projected = projected.clone()
+                projected[valid_type] = torch.bmm(
+                    self.type_mats[type_ids[valid_type]],
+                    projected[valid_type].unsqueeze(-1),
+                ).squeeze(-1)
+        return projected
+
+    def _project_weighted_sum(self, entity_emb, domain_ids, type_ids):
+        # Eq. 2 form with n=2, m=1:
+        #   T_e = α_type * M_type[t_id] + α_domain * M_domain[d_id]
+        #   e_proj = T_e @ e_emb
+        # = α_type * (M_type · e) + α_domain * (M_domain · e)
+        weights = F.softmax(self._type_mix_logits, dim=0)        # (2,) -> (α_type, α_domain)
+        alpha_type   = weights[0]
+        alpha_domain = weights[1]
+
+        type_branch   = torch.zeros_like(entity_emb)
+        domain_branch = torch.zeros_like(entity_emb)
+        has_type_mask   = torch.zeros(entity_emb.shape[0], device=entity_emb.device, dtype=entity_emb.dtype)
+        has_domain_mask = torch.zeros(entity_emb.shape[0], device=entity_emb.device, dtype=entity_emb.dtype)
+
+        if self.type_mats is not None:
+            valid_type = type_ids >= 0
+            if valid_type.any():
+                type_branch[valid_type] = torch.bmm(
+                    self.type_mats[type_ids[valid_type]],
+                    entity_emb[valid_type].unsqueeze(-1),
+                ).squeeze(-1)
+                has_type_mask[valid_type] = 1.0
+        if self.domain_mats is not None:
+            valid_domain = domain_ids >= 0
+            if valid_domain.any():
+                domain_branch[valid_domain] = torch.bmm(
+                    self.domain_mats[domain_ids[valid_domain]],
+                    entity_emb[valid_domain].unsqueeze(-1),
+                ).squeeze(-1)
+                has_domain_mask[valid_domain] = 1.0
+
+        # If only one branch is available for an entity, renormalise so that
+        # branch carries the full weight; if neither is available, fall back
+        # to the raw embedding.
+        denom = (alpha_type * has_type_mask + alpha_domain * has_domain_mask).clamp(min=self.eps)
+        weighted = (alpha_type * type_branch + alpha_domain * domain_branch) / denom.unsqueeze(-1)
+        any_valid = (has_type_mask + has_domain_mask) > 0
+        return torch.where(any_valid.unsqueeze(-1), weighted, entity_emb)
+
+    def _get_entity_hierarchical_type_energy(self, triples, model):
+        # EHT(T_h, r, T_t) = || T_h + r - T_t ||_2                        (Eq. 4)
+        # where T_h = T_{e_h} @ h_emb, T_t = T_{e_t} @ t_emb are the
+        # projected head/tail entity embeddings (T_e built per Eq. 2-3).
+        # We use the norm-symmetric form ||t - h - r|| = ||h + r - t||.
+        triples = triples.long()
+        head_ids = triples[:, 0]
+        rel_ids = triples[:, 1]
+        tail_ids = triples[:, 2]
+
+        if not hasattr(model, "entity_embeddings") or model.entity_embeddings is None:
+            raise RuntimeError("DSKRLLoss requires model.entity_embeddings for EHT computation.")
+        if not hasattr(model, "relation_embeddings") or model.relation_embeddings is None:
+            raise RuntimeError("DSKRLLoss requires model.relation_embeddings for EHT computation.")
+
+        head_emb = model.entity_embeddings(head_ids)
+        tail_emb = model.entity_embeddings(tail_ids)
+        rel_emb = model.relation_embeddings(rel_ids)
+
+        head_domains = self._head_domain_ids.to(triples.device)[rel_ids]
+        tail_domains = self._tail_domain_ids.to(triples.device)[rel_ids]
+        head_types = self._head_type_ids.to(triples.device)[rel_ids]
+        tail_types = self._tail_type_ids.to(triples.device)[rel_ids]
+
+        head_final = self._project_entities(head_emb, head_domains, head_types, entity_ids=head_ids)
+        tail_final = self._project_entities(tail_emb, tail_domains, tail_types, entity_ids=tail_ids)
+        return self._distance(tail_final - head_final - rel_emb)
+
+    def _get_relation_path_energy(self, triples, model): #RP(h, P, t)
+        # RP(h,P,t) = (1/Z) * Σ_p R(p|h,t) * d(h + p_vec - t)   (Eq. 5)
+        if self._path_rel_ids_buf is None:
+            return torch.zeros(triples.shape[0], device=triples.device,
+                               dtype=model.relation_embeddings.weight.dtype)
+        head_emb  = model.entity_embeddings(triples[:, 0])   # (B, D)
+        tail_emb  = model.entity_embeddings(triples[:, 2])   # (B, D)
+        rel_emb   = model.relation_embeddings.weight          # (R, D)
+        dtype     = rel_emb.dtype
+
+        path_vecs, weights, _weights_raw, mask = self._gather_path_tensors(
+            triples.detach().cpu().tolist(), rel_emb, triples.device, dtype
+        )  # (B,K,D), (B,K), (B,K), (B,K)
+
+        # (B,1,D) + (B,K,D) - (B,1,D) = (B,K,D)  →  distances (B,K)
+        diffs     = head_emb.unsqueeze(1) + path_vecs - tail_emb.unsqueeze(1)
+        distances = self._distance(diffs)                              # (B, K)
+        # weights here are already R/Z, so summing yields (1/Z) Σ R · d.
+        return (weights * distances * mask.float()).sum(dim=1)         # (B,)
+
+    def _get_triple_dissimilarity(self, triples, model):
+        # Paper notation:
+        #   PT(h,r,t) = EHT(h,r,t) + RP(h,P,t)
+        eht = self._get_entity_hierarchical_type_energy(triples, model)
+        rp = self._get_relation_path_energy(triples, model)
+        return eht + rp
+
+    def _get_selected_dissimilarity(self, triples, model):
+        # Ablation selector:
+        #   DSKRL(EHT) -> EHT
+        #   DSKRL(PT), DSKRL(LS), DSKRL -> PT = EHT + RP
+        if self.ablation_mode == "eht":
+            return self._get_entity_hierarchical_type_energy(triples, model)
+        return self._get_triple_dissimilarity(triples, model)
+
+    def _get_local_quality_energy(self, triples, model):
+        # Local quality term used to update LS:
+        #   Q(h,r,t) = d(h_PT + r - t_PT)
+        triples = triples.long()
+        if not hasattr(model, "entity_embeddings") or model.entity_embeddings is None:
+            raise RuntimeError("DSKRLLoss requires model.entity_embeddings for local quality computation.")
+        if not hasattr(model, "relation_embeddings") or model.relation_embeddings is None:
+            raise RuntimeError("DSKRLLoss requires model.relation_embeddings for local quality computation.")
+
+        head_ids = triples[:, 0]
+        rel_ids = triples[:, 1]
+        tail_ids = triples[:, 2]
+
+        head_emb = model.entity_embeddings(head_ids)
+        tail_emb = model.entity_embeddings(tail_ids)
+        rel_emb = model.relation_embeddings(rel_ids)
+
+        head_domains = self._head_domain_ids.to(triples.device)[rel_ids]
+        tail_domains = self._tail_domain_ids.to(triples.device)[rel_ids]
+        head_types = self._head_type_ids.to(triples.device)[rel_ids]
+        tail_types = self._tail_type_ids.to(triples.device)[rel_ids]
+
+        head_pt = self._project_entities(head_emb, head_domains, head_types, entity_ids=head_ids)
+        tail_pt = self._project_entities(tail_emb, tail_domains, tail_types, entity_ids=tail_ids)
+        return self._distance(head_pt + rel_emb - tail_pt)
+
+    def _sample_negative_relation_ids(self, rel_ids, num_relations, device):
+        # Helper for L(p,r): sample a corrupted relation r' != r.
+        if num_relations <= 1:
+            return rel_ids
+        sampled = torch.randint(0, num_relations - 1, size=rel_ids.shape, device=device)
+        return sampled + (sampled >= rel_ids).long()
+
+    def _get_local_support(self, pos_triples, device, dtype):
+        # Paper notation:
+        #   LS(h,r,t)
+        # is the cached local support value for each positive triple.
+        values = [self._local_support.get(tuple(triple), 1.0) for triple in pos_triples]
+        return torch.tensor(values, device=device, dtype=dtype)
+
+    def _get_support_term(self, pos_triples, model, device, dtype):
+        # Ablation selector:
+        #   DSKRL(EHT), DSKRL(PT) -> support = 1
+        #   DSKRL(LS)             -> support = LS
+        #   DSKRL                 -> support = k1 * LS + k2 * DPS
+        if self.ablation_mode in {"eht", "pt"}:
+            return torch.ones(len(pos_triples), device=device, dtype=dtype)
+
+        local_support = self._get_local_support(pos_triples, device=device, dtype=dtype)
+        if self.ablation_mode == "ls":
+            return local_support
+
+        dynamic_path_support = self._get_dynamic_path_support(
+            pos_triples,
+            model=model,
+            device=device,
+            dtype=dtype,
+        )
+        return self.support_k1 * local_support + self.support_k2 * dynamic_path_support
+
+    def _get_dynamic_path_support(self, pos_triples, model, device, dtype):
+        # DPS(h,r,t) = sigmoid( Σ_p R(p|h,t) / ||r - p||_2 )         (Eq. 11)
+        # Note: per the paper, the sum is over raw R(p|h,t), not R/Z.
+        if self._path_rel_ids_buf is None:
+            return torch.zeros(len(pos_triples), device=device, dtype=dtype)
+        rel_emb = model.relation_embeddings.weight
+
+        path_vecs, _weights_norm, weights_raw, mask = self._gather_path_tensors(
+            pos_triples, rel_emb, device, dtype
+        )  # (B,K,D), (B,K), (B,K), (B,K)
+
+        rel_ids = torch.tensor([int(t[1]) for t in pos_triples],
+                               device=device, dtype=torch.long)     # (B,)
+        r_embs  = rel_emb[rel_ids]                                  # (B, D)
+
+        # (B,1,D) - (B,K,D) = (B,K,D)  →  (B,K)
+        dists = self._distance(r_embs.unsqueeze(1) - path_vecs).clamp(min=self.eps)
+        accum = (weights_raw / dists * mask.float()).sum(dim=1)      # (B,)
+        return torch.sigmoid(accum)
+
+    def _get_path_relation_loss(self, pos_triples, model, device, dtype):
+        # (1/Z) * Σ_p R(p|h,t) * L(p,r)                              (inner term of Eq. 13)
+        # L(p,r) = max(0, path_margin + ||p - r|| - ||p - r'||)      (Eq. 15)
+        if self._path_rel_ids_buf is None:
+            return torch.zeros(len(pos_triples), device=device, dtype=dtype)
+        rel_emb     = model.relation_embeddings.weight
+        num_relations = rel_emb.shape[0]
+        rel_ids     = torch.tensor([int(t[1]) for t in pos_triples],
+                                   device=device, dtype=torch.long)     # (B,)
+        neg_rel_ids = self._sample_negative_relation_ids(rel_ids, num_relations, device=device)
+
+        path_vecs, weights, _weights_raw, mask = self._gather_path_tensors(
+            pos_triples, rel_emb, device, dtype
+        )  # (B,K,D), (B,K), (B,K), (B,K)
+
+        r_embs  = rel_emb[rel_ids]      # (B, D)
+        nr_embs = rel_emb[neg_rel_ids]  # (B, D)
+
+        # (B,K,D) - (B,1,D) = (B,K,D)  →  (B,K)
+        pos_e = self._distance(path_vecs - r_embs.unsqueeze(1))
+        neg_e = self._distance(path_vecs - nr_embs.unsqueeze(1))
+        # `weights` is R/Z, so summing already yields (1/Z) Σ R · L(p,r).
+        margin_loss = weights * F.relu(self.path_margin + pos_e - neg_e) * mask.float()
+        return margin_loss.sum(dim=1)
+
+    def _get_selected_path_relation_loss(self, pos_triples, model, device, dtype):
+        # Ablation selector:
+        #   Only the full DSKRL objective includes the auxiliary path-relation loss.
+        if self.ablation_mode != "full":
+            return torch.zeros(len(pos_triples), device=device, dtype=dtype)
+        return self._get_path_relation_loss(pos_triples, model, device, dtype)
+
+    def _should_update_local_support(self):
+        # LS is only part of the ablations that explicitly keep the local support term.
+        return self.ablation_mode in {"ls", "full"}
+
+    def forward(self, pred, target, current_epoch=None, x_batch=None, model=None):
+        # Paper objective (Eq. 13) for each positive triple:
+        #   Loss(h,r,t) = ( L(h,r,t) + (1/Z) Σ_p R(p|h,t) L(p,r) ) * S(h,r,t)
+        # with the paper-faithful defaults:
+        #   L(h,r,t) = max(0, margin + PT(pos) - PT(neg))           (Eq. 14)
+        #   S(h,r,t) = k1 * LS(h,r,t) + k2 * DPS(h,r,t)             (Eq. 12)
+        # use_native_score=True opts back into a native-score margin (faster,
+        # makes train/eval geometries match, but not paper-faithful).
+        # The second half of this function performs the online LS update (Eq. 8-9).
+        target = self._resolve_target(pred, target)
+
+        if pred.dim() > 1:
+            pred = pred.reshape(-1)
+            target = target.reshape(-1)
+
+        pos_mask = target > self.positive_threshold
+        pos_scores = pred[pos_mask]
+        neg_scores = pred[~pos_mask]
+
+        if pos_scores.numel() == 0 or neg_scores.numel() == 0:
+            return pred.new_tensor(0.0, requires_grad=True)
+
+        pos_triples_tensor = x_batch[pos_mask]
+        neg_triples_tensor = x_batch[~pos_mask]
+        pos_triples = pos_triples_tensor.detach().cpu().tolist()
+
+        if self.use_native_score:
+            paired_neg_scores = self._pair_negative_scores(pos_scores, neg_scores)
+            if self.score_is_distance:
+                triple_loss = F.relu(self.margin + pos_scores - paired_neg_scores)
+            else:
+                triple_loss = F.relu(self.margin - pos_scores + paired_neg_scores)
+        else:
+            pos_dissimilarity = self._get_selected_dissimilarity(pos_triples_tensor, model)
+            neg_dissimilarity = self._pair_negative_energies(
+                pos_dissimilarity,
+                self._get_selected_dissimilarity(neg_triples_tensor, model),
+            )
+            triple_loss = F.relu(self.margin + pos_dissimilarity - neg_dissimilarity)
+
+        support = self._get_support_term(
+            pos_triples,
+            model=model,
+            device=pred.device,
+            dtype=pred.dtype,
+        )
+        local_support = self._get_local_support(pos_triples, device=pred.device, dtype=pred.dtype)
+
+        path_relation_loss = self._get_selected_path_relation_loss(
+            pos_triples,
+            model=model,
+            device=pred.device,
+            dtype=pred.dtype,
+        )
+        # Final loss: mean( S(h,r,t) * (L(h,r,t) + L(p,r)) ).
+        loss = (support * (triple_loss + path_relation_loss)).mean()
+
+        # Online LS update: decay LS by gamma when the positive triple is not
+        # locally better than its matched negative.
+        if self._should_update_local_support():
+            if self.use_native_score_for_ls:
+                paired_neg_scores = self._pair_negative_scores(pos_scores, neg_scores)
+                if self.score_is_distance:
+                    q_values_tensor = paired_neg_scores - pos_scores - self.margin
+                else:
+                    q_values_tensor = pos_scores - paired_neg_scores - self.margin
+            else:
+                pos_quality_energy = self._get_local_quality_energy(pos_triples_tensor, model)
+                neg_quality_energy = self._pair_negative_energies(
+                    pos_quality_energy,
+                    self._get_local_quality_energy(neg_triples_tensor, model),
+                )
+                q_values_tensor = -(self.margin + pos_quality_energy - neg_quality_energy)
+            q_values = q_values_tensor.detach().cpu().tolist()
+            local_support_values = local_support.detach().cpu().tolist()
+            for triple, q_val, support_val in zip(pos_triples, q_values, local_support_values):
+                if q_val <= 0.0:
+                    self._local_support[tuple(triple)] = self.local_decay_gamma * support_val
+                else:
+                    self._local_support[tuple(triple)] = support_val
+
+        return loss
+
+
+class DSKRLEHTLoss(DSKRLLoss):
+    """Ablation: only the EHT triple-ranking term."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs["ablation_mode"] = "eht"
+        super().__init__(*args, **kwargs)
+
+
+class DSKRLPTLoss(DSKRLLoss):
+    """Ablation: PT = EHT + RP, without LS/DPS/L(p,r)."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs["ablation_mode"] = "pt"
+        super().__init__(*args, **kwargs)
+
+
+class DSKRLLSLoss(DSKRLLoss):
+    """Ablation: PT weighted only by LS, without DPS/L(p,r)."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs["ablation_mode"] = "ls"
+        super().__init__(*args, **kwargs)
+
+class PTrustELoss(nn.Module):
+    #Used with Negative Sampling
+    def __init__(self, margin=1.0, positive_threshold=0.5):
+        super().__init__()
+        self.margin = margin
+        self.positive_threshold = positive_threshold
+    
+    def forward(self, pred, target, current_epoch = None):
+
+        if torch.all((target == 0) | (target == 1)):
+            pos_mask = target == 1
+        else:
+            pos_mask = target > self.positive_threshold #Use thresholding when labels are softened/continuous in case of label smoothing
+        pos = pred[pos_mask] #Direct model scores instaed of path score matirx
+        neg = pred[~pos_mask]
+
+        if pos.numel() == 0 or neg.numel() == 0:
+            return pred.new_tensor(0.0, requires_grad=True)
+
+        pos_count = pos.numel()
+        neg_count = neg.numel()
+
+        log_margin = pred.new_tensor(self.margin).log() #log(gamma)
+
+        if neg_count % pos_count == 0:
+            #Assumes negatives are pre-grouped so each positive has exactly neg_ratio dedicated negatives
+            neg_ratio = neg_count // pos_count
+            neg = neg.view(neg_ratio, pos_count)
+            loss = torch.logaddexp(log_margin, neg - pos.unsqueeze(0)) #logaddexp(a, b) = log(exp(a) + exp(b))
+        else:
+            #When the ratio isn't uniform, it broadcasts all negatives against all positives
+            loss = torch.logaddexp(log_margin, neg.unsqueeze(1) - pos.unsqueeze(0))
+            #unsqueeze inserts a size-1 dimension to control how PyTorch broadcasts the subtraction. The indices refer to which axis gets the new size-1 dimension.
+
+        return loss.sum()
+
+
+class BertKGEContrastiveCCALoss(nn.Module):
+    """
+    Normal KGE BCE loss plus contrastive alignment to frozen N-BERT triple representations.
+
+    The N-BERT export file must contain:
+      - keys: Dice integer triples with shape [N, 3]
+      - bert_repr: frozen N-BERT triple representations with shape [N, D]
+    """
+
+    requires_x_batch = True
+    requires_model = True
+
+    def __init__(
+        self,
+        nbert_repr_path,
+        num_entities,
+        num_relations,
+        embedding_dim,
+        projection_dim=128,
+        temperature=0.1,
+        lambda_cca=0.1,
+        positive_threshold=0.5,
+    ):
+        super().__init__()
+        if not nbert_repr_path:
+            raise ValueError("BertKGEContrastiveCCALoss requires --nbert_repr_path.")
+
+        payload = torch.load(nbert_repr_path, map_location="cpu")
+        if "keys" not in payload:
+            raise ValueError("N-BERT file must contain `keys`. Re-export with --dice_mapping_dir.")
+        if "bert_repr" not in payload:
+            raise ValueError("N-BERT file must contain `bert_repr`.")
+
+        keys = payload["keys"].long()
+        bert_repr = payload["bert_repr"].float()
+
+        if keys.ndim != 2 or keys.size(1) != 3:
+            raise ValueError(f"Expected keys shape [N, 3], got {tuple(keys.shape)}.")
+        if bert_repr.ndim != 2:
+            raise ValueError(f"Expected bert_repr shape [N, D], got {tuple(bert_repr.shape)}.")
+
+        self.num_entities = int(num_entities)
+        self.num_relations = int(num_relations)
+        self.temperature = temperature
+        self.lambda_cca = lambda_cca
+        self.positive_threshold = positive_threshold
+
+        self.register_buffer("bert_repr_table", bert_repr)
+
+        encoded_keys = self._encode_keys(keys)
+        self.key_to_row = {int(key): row for row, key in enumerate(encoded_keys.tolist())}
+
+        bert_dim = bert_repr.size(1)
+        self.bert_projection = nn.Linear(bert_dim, projection_dim)
+        self.kge_projection = nn.LazyLinear(projection_dim)
+        self.base_loss = nn.BCEWithLogitsLoss()
+
+    def _encode_keys(self, triples):
+        triples = triples.long()
+        return (
+            triples[:, 0] * (self.num_relations * self.num_entities)
+            + triples[:, 1] * self.num_entities
+            + triples[:, 2]
+        )
+
+    def _lookup_rows(self, triples):
+        encoded = self._encode_keys(triples.detach().cpu())
+        rows = [self.key_to_row.get(int(key), -1) for key in encoded.tolist()]
+        return torch.tensor(rows, device=triples.device, dtype=torch.long)
+
+    def _flatten_inputs(self, x_batch, target):
+        if x_batch.dim() == 3:
+            x_batch = x_batch.reshape(-1, x_batch.size(-1))
+        if x_batch.dim() != 2 or x_batch.size(-1) != 3:
+            raise ValueError(
+                "BertKGEContrastiveCCALoss requires triple batches shaped [N, 3]. "
+                "Use --scoring_technique NegSample first."
+            )
+        if target.dim() > 1:
+            target = target.reshape(-1)
+        return x_batch, target
+
+    def _kge_repr(self, triples, model):
+        head_repr, rel_repr, tail_repr = model.get_triple_representation(triples)
+        return torch.cat(
+            [
+                head_repr.reshape(head_repr.size(0), -1),
+                rel_repr.reshape(rel_repr.size(0), -1),
+                tail_repr.reshape(tail_repr.size(0), -1),
+            ],
+            dim=-1,
+        )
+
+    def _contrastive_loss(self, kge_repr, bert_repr):
+        kge_z = F.normalize(self.kge_projection(kge_repr), dim=-1)
+        bert_z = F.normalize(self.bert_projection(bert_repr), dim=-1)
+        logits = torch.matmul(kge_z, bert_z.t()) / self.temperature
+        labels = torch.arange(logits.size(0), device=logits.device)
+        return 0.5 * (F.cross_entropy(logits, labels) + F.cross_entropy(logits.t(), labels))
+
+    def forward(self, pred, target, current_epoch=None, x_batch=None, model=None):
+        if x_batch is None or model is None:
+            raise ValueError("BertKGEContrastiveCCALoss requires x_batch and model.")
+
+        base_loss = self.base_loss(pred.reshape_as(target).float(), target.float())
+        triples, flat_target = self._flatten_inputs(x_batch, target)
+        positive_mask = flat_target > self.positive_threshold
+        positive_triples = triples[positive_mask]
+
+        if positive_triples.numel() == 0:
+            return base_loss
+
+        rows = self._lookup_rows(positive_triples)
+        available = rows >= 0
+        if not torch.any(available):
+            return base_loss
+
+        positive_triples = positive_triples[available].to(pred.device)
+        rows = rows[available]
+        bert_repr = self.bert_repr_table[rows].to(device=pred.device, dtype=pred.dtype)
+        kge_repr = self._kge_repr(positive_triples, model)
+        cca_loss = self._contrastive_loss(kge_repr, bert_repr)
+        return base_loss + self.lambda_cca * cca_loss
+
+
+class cca(nn.Module):
+    #confidence-weighted KvsAll cross-entropy
+    def __init__(self, temp = 0.1, use_confidence = True, warmup_epochs = 5, min_weight = 0.5, reweight_strength = 1.0):
+        super().__init__()
+        self.T = temp 
+        self.use_conf = use_confidence 
+        self.warmup_epochs = warmup_epochs 
+        self.min_weight = min_weight 
+        self.reweight_strength = reweight_strength 
+        self.eps = 1e-12 
+
+    def forward(self, pred, target, current_epoch):
+        log_prob = F.log_softmax(pred / self.T, dim = 1)
+
+        pos_mass = target.sum(dim=1)
+        valid = pos_mass > 0 
+        target_norm = target / pos_mass.clamp(min=self.eps).unsqueeze(1) 
+        per_sample = -(target_norm * log_prob).sum(dim=1) 
+
+        if not self.use_conf or current_epoch < self.warmup_epochs:
+            weights = torch.ones_like(per_sample) #weights all samples 1.0
+        else:
+            detached = per_sample.detach()
+            low, high = detached.min(), detached.max() 
+            norm = (detached - low) / (high - low).clamp(min = self.eps) 
+            weights = (1.0 - self.reweight_strength * norm).clamp(self.min_weight, 1.0)
         
+        weights = weights * valid.float() 
+        return (weights * per_sample).sum() / weights.sum().clamp(min = self.eps)
 
-        
+
+
+
+
+
+
+
+
+
+
     
-            
-    
-
-
-
-
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-

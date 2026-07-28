@@ -438,3 +438,71 @@ class ContinuousExecute(Execute):
             self.evaluator = Evaluator(args=self.args, is_continual_training=True)
             self.evaluator.dummy_eval(self.trained_model, form_of_labelling)
             return {**self.report, **self.evaluator.report}
+
+def run_dicee_eval(dataset_folder=None, model="Keci", num_epochs=100, batch_size=1024,
+                   learning_rate=0.1, embedding_dim=32, loss_function="BCELoss",
+                   path_to_store_single_run=None, scoring_technique="KvsAll", optim="Adam",
+                   trainer=None, random_seed=None, neg_ratio=2,
+                   num_of_output_channels=None, block_size=None, **kwargs):
+    """
+    A function to run dicee evaluation experiments.
+    
+    Parameters
+    ----------
+    dataset_folder : str
+        Path to the dataset folder containing train.txt, valid.txt, test.txt
+    model : str
+        Name of the KGE model to use
+    num_epochs : int
+        Number of training epochs
+    batch_size : int
+        Batch size for training
+    learning_rate : float
+        Learning rate for optimizer
+    embedding_dim : int
+        Dimension of embeddings
+    loss_function : str
+        Loss function name (e.g., "BCELoss")
+    path_to_store_single_run : str
+        Path where to store the trained model and results
+    scoring_technique : str
+        Scoring technique (e.g., "KvsAll", "NegSample")
+    optim : str
+        Optimizer name (e.g., "Adam")
+    **kwargs
+        Additional arguments to pass to Namespace
+    
+    Returns
+    -------
+    dict
+        Dictionary containing training and evaluation results
+    """
+    from .config import Namespace
+    
+    args = Namespace()
+    args.dataset_dir = dataset_folder
+    args.model = model
+    args.num_epochs = int(num_epochs) if isinstance(num_epochs, str) else num_epochs
+    args.batch_size = int(batch_size) if isinstance(batch_size, str) else batch_size
+    args.lr = float(learning_rate) if isinstance(learning_rate, str) else learning_rate
+    args.embedding_dim = int(embedding_dim) if isinstance(embedding_dim, str) else embedding_dim
+    args.loss_fn = loss_function
+    args.path_to_store_single_run = path_to_store_single_run
+    args.scoring_technique = scoring_technique
+    args.optim = optim
+    if trainer is not None:
+        args.trainer = trainer
+    if random_seed is not None:
+        args.random_seed = int(random_seed)
+    if neg_ratio is not None:
+        args.neg_ratio = int(neg_ratio)
+    if num_of_output_channels is not None:
+        args.num_of_output_channels = int(num_of_output_channels)
+    if block_size is not None:
+        args.block_size = int(block_size)
+    
+    for key, value in kwargs.items():
+        setattr(args, key, value)
+
+    executor = Execute(args)
+    return executor.start()

@@ -716,7 +716,8 @@ class TriplePredictionDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return torch.from_numpy(self.train_set[idx].copy()).long()
 
-    def collate_fn(self, batch: List[torch.Tensor]):
+    def collate_fn(self, batch: List[torch.Tensor]): 
+        #Corrupt head or tail with a certain probability and generate negative samples
         batch = torch.stack(batch, dim=0)
         h, r, t = batch[:, 0], batch[:, 1], batch[:, 2]
         size_of_batch, _ = batch.shape

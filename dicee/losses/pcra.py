@@ -124,6 +124,34 @@ def _normalize_path_map(h_e_p, min_prob: float):
     return normalized
 
 
+def _build_first_seen_relation_mapping(triples: Iterable[Tuple[str, str, str]]) -> Dict[str, int]:
+    relation_to_idx = {}
+    for _, rel, _ in triples:
+        if rel not in relation_to_idx:
+            relation_to_idx[rel] = len(relation_to_idx)
+    return relation_to_idx
+
+
+def _remap_pra_relation_id(
+    pra_rel_id: int,
+    pra_relation_count: int,
+    current_relation_to_idx: Dict[str, int],
+    current_relation_count: int,
+    pra_idx_to_relation: Dict[int, str],
+):
+    is_inverse = pra_rel_id >= pra_relation_count
+    base_rel_id = pra_rel_id - pra_relation_count if is_inverse else pra_rel_id
+    rel_name = pra_idx_to_relation.get(base_rel_id)
+    if rel_name is None:
+        return None
+    current_base_id = current_relation_to_idx.get(rel_name)
+    if current_base_id is None:
+        return None
+    if not is_inverse:
+        return current_base_id
+    return current_base_id + current_relation_count
+
+
 def compute_pcra(
     dataset_dir: str,
     relation_to_idx: Dict[str, int],
@@ -259,13 +287,13 @@ def compute_prior_confidence_map(
     return pp_map
 
 
-def load_pra_paths(dataset_dir, entity_to_idx, relation_to_idx):
+def load_pra_paths(dataset_dir, entity_to_idx, relation_to_idx, triple_order: str = "s r o"):
     """
     Builds the necessary files for AP
 
     Example:
-    path_data[(10, 3, 25)] = [
-    ([7,9], 0.5),
+    path_data[(10, 3, 25)] =
+    [([7,9], 0.5),
     ([12], 0.2)]
 
     for the triple with IDs (head=10, relation=3, tail=25), there are two relation‑paths between the head and tail:
@@ -280,8 +308,16 @@ def load_pra_paths(dataset_dir, entity_to_idx, relation_to_idx):
     entity_to_idx = _to_index_dict(entity_to_idx, "entity")
     relation_to_idx = _to_index_dict(relation_to_idx, "relation")
     path_data = {}
+    current_relation_count = len(relation_to_idx)
+    train_triples = _read_triples(os.path.join(dataset_dir, "train.txt"), triple_order)
+    pra_relation_to_idx = _build_first_seen_relation_mapping(train_triples)
+    pra_idx_to_relation = {idx: rel for rel, idx in pra_relation_to_idx.items()}
+    pra_relation_count = len(pra_relation_to_idx)
+    remapped_path_count = 0
+    skipped_path_count = 0
 
     def _parse_pra_file(path):
+        nonlocal remapped_path_count, skipped_path_count
         if not os.path.exists(path):
             return
         with open(path, "r") as f:
@@ -292,7 +328,14 @@ def load_pra_paths(dataset_dir, entity_to_idx, relation_to_idx):
             h = tokens[i]; t = tokens[i + 1]; rel = tokens[i + 2]
             i += 3
             try:
-                rel_id = int(rel)
+                pra_rel_id = int(rel)
+                rel_id = _remap_pra_relation_id(
+                    pra_rel_id=pra_rel_id,
+                    pra_relation_count=pra_relation_count,
+                    current_relation_to_idx=relation_to_idx,
+                    current_relation_count=current_relation_count,
+                    pra_idx_to_relation=pra_idx_to_relation,
+                )
             except ValueError:
                 rel_id = relation_to_idx.get(rel, None)
             if rel_id is None:
@@ -308,9 +351,31 @@ def load_pra_paths(dataset_dir, entity_to_idx, relation_to_idx):
             paths = []
             for _ in range(path_count):
                 path_len = int(tokens[i]); i += 1
-                rel_path = [int(tokens[i + j]) for j in range(path_len)]
+                rel_path = []
+                skip_path = False
+                for j in range(path_len):
+                    token = tokens[i + j]
+                    try:
+                        pra_path_rel_id = int(token)
+                        mapped_path_rel_id = _remap_pra_relation_id(
+                            pra_rel_id=pra_path_rel_id,
+                            pra_relation_count=pra_relation_count,
+                            current_relation_to_idx=relation_to_idx,
+                            current_relation_count=current_relation_count,
+                            pra_idx_to_relation=pra_idx_to_relation,
+                        )
+                    except ValueError:
+                        mapped_path_rel_id = relation_to_idx.get(token, None)
+                    if mapped_path_rel_id is None:
+                        skip_path = True
+                        continue
+                    rel_path.append(mapped_path_rel_id)
                 i += path_len
                 pr = float(tokens[i]); i += 1
+                if skip_path or len(rel_path) != path_len:
+                    skipped_path_count += 1
+                    continue
+                remapped_path_count += 1
                 paths.append((rel_path, pr))
             if triple_key[0] is not None and triple_key[2] is not None:
                 if triple_key not in path_data:
@@ -319,4 +384,9 @@ def load_pra_paths(dataset_dir, entity_to_idx, relation_to_idx):
 
     _parse_pra_file(os.path.join(dataset_dir, "train_pra.txt"))
     _parse_pra_file(os.path.join(dataset_dir, "neg_train_pra.txt"))
+    if pra_relation_count > 0 and (remapped_path_count > 0 or skipped_path_count > 0):
+        print(
+            f"[PCRA] Remapped {remapped_path_count} PRA paths into current relation ids "
+            f"(skipped {skipped_path_count} unmapped paths)."
+        )
     return path_data

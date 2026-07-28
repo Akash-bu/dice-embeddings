@@ -259,15 +259,15 @@ class PreprocessKG:
     def preprocess_with_pandas(self) -> None:
         """Preprocess with pandas: add reciprocal triples, construct vocabulary, and index datasets"""
         # Add reciprocal or noisy triples
-        self.kg.raw_train_set = apply_reciprocal_or_noise(add_reciprocal=self.kg.add_reciprocal,
-                                                          eval_model=self.kg.eval_model,
-                                                          df=self.kg.raw_train_set, info="Train")
-        self.kg.raw_valid_set = apply_reciprocal_or_noise(add_reciprocal=self.kg.add_reciprocal,
-                                                          eval_model=self.kg.eval_model,
-                                                          df=self.kg.raw_valid_set, info="Validation")
-        self.kg.raw_test_set = apply_reciprocal_or_noise(add_reciprocal=self.kg.add_reciprocal,
-                                                         eval_model=self.kg.eval_model,
-                                                         df=self.kg.raw_test_set, info="Test")
+        # self.kg.raw_train_set = apply_reciprocal_or_noise(add_reciprocal=self.kg.add_reciprocal,
+        #                                                   eval_model=self.kg.eval_model,
+        #                                                   df=self.kg.raw_train_set, info="Train")
+        # self.kg.raw_valid_set = apply_reciprocal_or_noise(add_reciprocal=self.kg.add_reciprocal,
+        #                                                   eval_model=self.kg.eval_model,
+        #                                                   df=self.kg.raw_valid_set, info="Validation")
+        # self.kg.raw_test_set = apply_reciprocal_or_noise(add_reciprocal=self.kg.add_reciprocal,
+        #                                                  eval_model=self.kg.eval_model,
+        #                                                  df=self.kg.raw_test_set, info="Test")
 
         # Construct vocabulary
         self.sequential_vocabulary_construction()

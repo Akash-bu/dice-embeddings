@@ -510,7 +510,24 @@ def create_recipriocal_triples(x):
         x['relation'].map(lambda x: x + '_inverse').to_frame(name='relation')).join(
         x['subject'].to_frame(name='object'))], ignore_index=True)
 
+"""
+w/o ignore_index=True:
 
+index  subject   relation        object
+0      A         r               B
+1      C         s               D
+0      B         r_inverse       A
+1      D         s_inverse       C
+
+ignore_index=True:
+
+index  subject   relation        object
+0      A         r               B
+1      C         s               D
+2      B         r_inverse       A
+3      D         s_inverse       C
+
+"""
 
 def dataset_sanity_checking(train_set: np.ndarray, num_entities: int, num_relations: int) -> None:
     """
