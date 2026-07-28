@@ -1,0 +1,965 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>dicee.abstracts &mdash; DICE Embeddings 0.1.3.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=677a9ea0" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/theme.css?v=ea877efc" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/theme_tweak.css?v=f0ad19f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=677a9ea0" />
+
+  
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=c6726a90"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="dicee.analyse_experiments" href="../analyse_experiments/index.html" />
+    <link rel="prev" title="dicee.__main__" href="../__main__/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DICE Embeddings
+              <img src="../../../_static/dicee_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html">Dicee Manual</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#installation">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#download-knowledge-graphs">Download Knowledge Graphs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#knowledge-graph-embedding-models">Knowledge Graph Embedding Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#how-to-train">How to Train</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#creating-an-embedding-vector-database">Creating an Embedding Vector Database</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#answering-complex-queries">Answering Complex Queries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#predicting-missing-links">Predicting Missing Links</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#downloading-pretrained-models">Downloading Pretrained Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#how-to-deploy">How to Deploy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#docker">Docker</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#coverage-report">Coverage Report</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../usage/main.html#how-to-cite">How to cite</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">dicee</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../__main__/index.html">dicee.__main__</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">dicee.abstracts</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#attributes">Attributes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#classes">Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li class="toctree-l5"><a class="reference internal" href="#dicee.abstracts.logger"><code class="docutils literal notranslate"><span class="pre">logger</span></code></a></li>
+<li class="toctree-l5"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer</span></code></a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.attributes"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.attributes</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.callbacks"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.callbacks</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.is_global_zero"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.is_global_zero</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.global_rank"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.global_rank</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.local_rank"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.local_rank</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.strategy"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.strategy</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.on_fit_start"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.on_fit_start()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.on_fit_end"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.on_fit_end()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.on_train_epoch_start"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.on_train_epoch_start()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.on_train_epoch_end"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.on_train_epoch_end()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.on_train_batch_end"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.on_train_batch_end()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractTrainer.save_checkpoint"><code class="docutils literal notranslate"><span class="pre">AbstractTrainer.save_checkpoint()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE</span></code></a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.construct_ensemble"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.construct_ensemble</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.apply_semantic_constraint"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.apply_semantic_constraint</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.configs"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.configs</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.get_eval_report"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.get_eval_report()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.get_bpe_token_representation"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.get_bpe_token_representation()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.get_padded_bpe_triple_representation"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.get_padded_bpe_triple_representation()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.set_model_train_mode"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.set_model_train_mode()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.set_model_eval_mode"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.set_model_eval_mode()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.name"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.name</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.sample_entity"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.sample_entity()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.sample_relation"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.sample_relation()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.is_seen"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.is_seen()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.save"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.save()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.get_entity_index"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.get_entity_index()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.get_relation_index"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.get_relation_index()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.index_triple"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.index_triple()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.add_new_entity_embeddings"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.add_new_entity_embeddings()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.get_entity_embeddings"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.get_entity_embeddings()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.get_relation_embeddings"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.get_relation_embeddings()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.construct_input_and_output"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.construct_input_and_output()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE.parameters"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveKGE.parameters()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="#dicee.abstracts.InteractiveQueryDecomposition"><code class="docutils literal notranslate"><span class="pre">InteractiveQueryDecomposition</span></code></a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.InteractiveQueryDecomposition.t_norm"><code class="docutils literal notranslate"><span class="pre">InteractiveQueryDecomposition.t_norm()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.InteractiveQueryDecomposition.tensor_t_norm"><code class="docutils literal notranslate"><span class="pre">InteractiveQueryDecomposition.tensor_t_norm()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.InteractiveQueryDecomposition.t_conorm"><code class="docutils literal notranslate"><span class="pre">InteractiveQueryDecomposition.t_conorm()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.InteractiveQueryDecomposition.negnorm"><code class="docutils literal notranslate"><span class="pre">InteractiveQueryDecomposition.negnorm()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="#dicee.abstracts.AbstractCallback"><code class="docutils literal notranslate"><span class="pre">AbstractCallback</span></code></a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractCallback.on_init_start"><code class="docutils literal notranslate"><span class="pre">AbstractCallback.on_init_start()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractCallback.on_init_end"><code class="docutils literal notranslate"><span class="pre">AbstractCallback.on_init_end()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractCallback.on_fit_start"><code class="docutils literal notranslate"><span class="pre">AbstractCallback.on_fit_start()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractCallback.on_train_epoch_end"><code class="docutils literal notranslate"><span class="pre">AbstractCallback.on_train_epoch_end()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractCallback.on_train_batch_end"><code class="docutils literal notranslate"><span class="pre">AbstractCallback.on_train_batch_end()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractCallback.on_fit_end"><code class="docutils literal notranslate"><span class="pre">AbstractCallback.on_fit_end()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback</span></code></a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.num_epochs"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback.num_epochs</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.path"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback.path</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.sample_counter"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback.sample_counter</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.epoch_count"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback.epoch_count</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.alphas"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback.alphas</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.on_fit_start"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback.on_fit_start()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.on_fit_end"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback.on_fit_end()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.store_ensemble"><code class="docutils literal notranslate"><span class="pre">AbstractPPECallback.store_ensemble()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveTrainKGE"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveTrainKGE</span></code></a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveTrainKGE.train_triples"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveTrainKGE.train_triples()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveTrainKGE.train_k_vs_all"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveTrainKGE.train_k_vs_all()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveTrainKGE.train"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveTrainKGE.train()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#dicee.abstracts.BaseInteractiveTrainKGE.train_literals"><code class="docutils literal notranslate"><span class="pre">BaseInteractiveTrainKGE.train_literals()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../analyse_experiments/index.html">dicee.analyse_experiments</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../callbacks/index.html">dicee.callbacks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../config/index.html">dicee.config</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../dataset_classes/index.html">dicee.dataset_classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../eval_static_funcs/index.html">dicee.eval_static_funcs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../evaluation/index.html">dicee.evaluation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../evaluator/index.html">dicee.evaluator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../executer/index.html">dicee.executer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../knowledge_graph/index.html">dicee.knowledge_graph</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../knowledge_graph_embeddings/index.html">dicee.knowledge_graph_embeddings</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../models/index.html">dicee.models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../query_generator/index.html">dicee.query_generator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../read_preprocess_save_load_kg/index.html">dicee.read_preprocess_save_load_kg</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sanity_checkers/index.html">dicee.sanity_checkers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../scripts/index.html">dicee.scripts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../static_funcs/index.html">dicee.static_funcs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../static_funcs_training/index.html">dicee.static_funcs_training</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../static_preprocess_funcs/index.html">dicee.static_preprocess_funcs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../trainer/index.html">dicee.trainer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../weight_averaging/index.html">dicee.weight_averaging</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../index.html#attributes">Attributes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../index.html#classes">Classes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../index.html#package-contents">Package Contents</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DICE Embeddings</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">dicee</a></li>
+      <li class="breadcrumb-item active">dicee.abstracts</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/autoapi/dicee/abstracts/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-dicee.abstracts">
+<span id="dicee-abstracts"></span><h1>dicee.abstracts<a class="headerlink" href="#module-dicee.abstracts" title="Link to this heading"></a></h1>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#dicee.abstracts.logger" title="dicee.abstracts.logger"><code class="xref py py-obj docutils literal notranslate"><span class="pre">logger</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#dicee.abstracts.AbstractTrainer" title="dicee.abstracts.AbstractTrainer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractTrainer</span></code></a></p></td>
+<td><p>Abstract base class for KGE model trainers.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#dicee.abstracts.BaseInteractiveKGE" title="dicee.abstracts.BaseInteractiveKGE"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseInteractiveKGE</span></code></a></p></td>
+<td><p>Base class for interactive, post-training use of KGE models.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#dicee.abstracts.InteractiveQueryDecomposition" title="dicee.abstracts.InteractiveQueryDecomposition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">InteractiveQueryDecomposition</span></code></a></p></td>
+<td><p>Mixin that provides fuzzy-logic operators for multi-hop EPFO query answering.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#dicee.abstracts.AbstractCallback" title="dicee.abstracts.AbstractCallback"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractCallback</span></code></a></p></td>
+<td><p>Abstract base class for KGE training lifecycle callbacks.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#dicee.abstracts.AbstractPPECallback" title="dicee.abstracts.AbstractPPECallback"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractPPECallback</span></code></a></p></td>
+<td><p>Abstract base class for Post-training Parameter Ensembling (PPE) callbacks.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#dicee.abstracts.BaseInteractiveTrainKGE" title="dicee.abstracts.BaseInteractiveTrainKGE"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseInteractiveTrainKGE</span></code></a></p></td>
+<td><p>Abstract/base class for training knowledge graph embedding models interactively.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<dl class="py data">
+<dt class="sig sig-object py" id="dicee.abstracts.logger">
+<span class="sig-prename descclassname"><span class="pre">dicee.abstracts.</span></span><span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#dicee.abstracts.logger" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">dicee.abstracts.</span></span><span class="sig-name descname"><span class="pre">AbstractTrainer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">callbacks</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer" title="Link to this definition"></a></dt>
+<dd><p>Abstract base class for KGE model trainers.</p>
+<p>Provides the callback dispatch mechanism shared by all concrete trainer
+implementations (TorchTrainer, TorchDDPTrainer, etc.).  Sub-classes call
+the <code class="docutils literal notranslate"><span class="pre">on_*</span></code> hooks at the appropriate points in the training loop so that
+any registered <a class="reference internal" href="#dicee.abstracts.AbstractCallback" title="dicee.abstracts.AbstractCallback"><code class="xref py py-class docutils literal notranslate"><span class="pre">AbstractCallback</span></code></a> can react.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>args</strong> (<em>argparse.Namespace</em><em> or </em><em>similar</em>) – Processed configuration object.  Must expose at least
+<code class="docutils literal notranslate"><span class="pre">random_seed</span></code> (int).</p></li>
+<li><p><strong>callbacks</strong> (<em>list</em><em> of </em><a class="reference internal" href="#dicee.abstracts.AbstractCallback" title="dicee.abstracts.AbstractCallback"><em>AbstractCallback</em></a>) – Ordered list of callback instances to invoke at each lifecycle hook.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.attributes">
+<span class="sig-name descname"><span class="pre">attributes</span></span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.attributes" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.callbacks">
+<span class="sig-name descname"><span class="pre">callbacks</span></span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.callbacks" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.is_global_zero">
+<span class="sig-name descname"><span class="pre">is_global_zero</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.is_global_zero" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.global_rank">
+<span class="sig-name descname"><span class="pre">global_rank</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.global_rank" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.local_rank">
+<span class="sig-name descname"><span class="pre">local_rank</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.local_rank" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.strategy">
+<span class="sig-name descname"><span class="pre">strategy</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.strategy" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.on_fit_start">
+<span class="sig-name descname"><span class="pre">on_fit_start</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.on_fit_start" title="Link to this definition"></a></dt>
+<dd><p>Dispatch <code class="docutils literal notranslate"><span class="pre">on_fit_start</span></code> to all registered callbacks.</p>
+<p>Called once before the first training epoch begins.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.on_fit_end">
+<span class="sig-name descname"><span class="pre">on_fit_end</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.on_fit_end" title="Link to this definition"></a></dt>
+<dd><p>Dispatch <code class="docutils literal notranslate"><span class="pre">on_fit_end</span></code> to all registered callbacks.</p>
+<p>Called once after the last training epoch completes.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.on_train_epoch_start">
+<span class="sig-name descname"><span class="pre">on_train_epoch_start</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.on_train_epoch_start" title="Link to this definition"></a></dt>
+<dd><p>Dispatch <code class="docutils literal notranslate"><span class="pre">on_train_epoch_start</span></code> to all registered callbacks.</p>
+<p>Called at the beginning of every epoch.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.on_train_epoch_end">
+<span class="sig-name descname"><span class="pre">on_train_epoch_end</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.on_train_epoch_end" title="Link to this definition"></a></dt>
+<dd><p>Dispatch <code class="docutils literal notranslate"><span class="pre">on_train_epoch_end</span></code> to all registered callbacks.</p>
+<p>Called at the end of every epoch after the loss has been accumulated.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.on_train_batch_end">
+<span class="sig-name descname"><span class="pre">on_train_batch_end</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.on_train_batch_end" title="Link to this definition"></a></dt>
+<dd><p>Dispatch <code class="docutils literal notranslate"><span class="pre">on_train_batch_end</span></code> to all registered callbacks.</p>
+<p>Called after each mini-batch gradient update.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractTrainer.save_checkpoint">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">save_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">full_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#dicee.abstracts.AbstractTrainer.save_checkpoint" title="Link to this definition"></a></dt>
+<dd><p>Persist model weights to disk.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>full_path</strong> (<em>str</em>) – Absolute or relative file path (including filename) where the
+<code class="docutils literal notranslate"><span class="pre">state_dict</span></code> will be written, e.g.
+<code class="docutils literal notranslate"><span class="pre">'Experiments/run1/model.pt'</span></code>.</p></li>
+<li><p><strong>model</strong> (<em>torch.nn.Module</em>) – The model whose <code class="docutils literal notranslate"><span class="pre">state_dict</span></code> is to be saved.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">dicee.abstracts.</span></span><span class="sig-name descname"><span class="pre">BaseInteractiveKGE</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">construct_ensemble</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_semantic_constraint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE" title="Link to this definition"></a></dt>
+<dd><p>Base class for interactive, post-training use of KGE models.</p>
+<p>Loads a pre-trained model from disk (or a remote URL) together with its
+entity/relation index mappings and exposes the prediction API used by
+<a class="reference internal" href="../knowledge_graph_embeddings/index.html#dicee.knowledge_graph_embeddings.KGE" title="dicee.knowledge_graph_embeddings.KGE"><code class="xref py py-class docutils literal notranslate"><span class="pre">KGE</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – Path to the experiment directory produced by <code class="xref py py-class docutils literal notranslate"><span class="pre">Execute</span></code>.
+Must contain <code class="docutils literal notranslate"><span class="pre">model.pt</span></code>, <code class="docutils literal notranslate"><span class="pre">configuration.json</span></code>,
+<code class="docutils literal notranslate"><span class="pre">entity_to_idx.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">relation_to_idx.csv</span></code>.</p></li>
+<li><p><strong>url</strong> (<em>str</em><em>, </em><em>optional</em>) – Remote URL of a pre-trained model to download.  Mutually exclusive
+with <em>path</em>.</p></li>
+<li><p><strong>construct_ensemble</strong> (<em>bool</em><em>, </em><em>optional</em>) – When <code class="docutils literal notranslate"><span class="pre">True</span></code>, load all checkpoint files in <em>path</em> and average their
+weights to form an ensemble model.  Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>model_name</strong> (<em>str</em><em>, </em><em>optional</em>) – Filename (without extension) of the checkpoint to load when multiple
+<code class="docutils literal notranslate"><span class="pre">.pt</span></code> files exist in <em>path</em>.</p></li>
+<li><p><strong>apply_semantic_constraint</strong> (<em>bool</em><em>, </em><em>optional</em>) – Reserved for future use.  Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.construct_ensemble">
+<span class="sig-name descname"><span class="pre">construct_ensemble</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.construct_ensemble" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.apply_semantic_constraint">
+<span class="sig-name descname"><span class="pre">apply_semantic_constraint</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.apply_semantic_constraint" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.configs">
+<span class="sig-name descname"><span class="pre">configs</span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.configs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.get_eval_report">
+<span class="sig-name descname"><span class="pre">get_eval_report</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.get_eval_report" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.get_bpe_token_representation">
+<span class="sig-name descname"><span class="pre">get_bpe_token_representation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">str_entity_or_relation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.get_bpe_token_representation" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>str_entity_or_relation</strong> (<em>corresponds to a str</em><em> or </em><em>a list</em><em> of </em><em>strings to be tokenized via BPE and shaped.</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list integer(s) or a list of lists containing integer(s)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.get_padded_bpe_triple_representation">
+<span class="sig-name descname"><span class="pre">get_padded_bpe_triple_representation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">triples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.get_padded_bpe_triple_representation" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>triples</strong></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.set_model_train_mode">
+<span class="sig-name descname"><span class="pre">set_model_train_mode</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.set_model_train_mode" title="Link to this definition"></a></dt>
+<dd><p>Switch the underlying model to training mode.</p>
+<p>Calls <code class="docutils literal notranslate"><span class="pre">model.train()</span></code> and re-enables gradient computation for all
+parameters so that subsequent calls to optimisation steps work
+correctly after a period of inference.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.set_model_eval_mode">
+<span class="sig-name descname"><span class="pre">set_model_eval_mode</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.set_model_eval_mode" title="Link to this definition"></a></dt>
+<dd><p>Switch the underlying model to evaluation mode.</p>
+<p>Calls <code class="docutils literal notranslate"><span class="pre">model.eval()</span></code> and freezes all parameters (<code class="docutils literal notranslate"><span class="pre">requires_grad</span> <span class="pre">=</span>
+<span class="pre">False</span></code>) so that dropout and batch-norm layers behave deterministically
+during inference.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.name">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.sample_entity">
+<span class="sig-name descname"><span class="pre">sample_entity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.sample_entity" title="Link to this definition"></a></dt>
+<dd><p>Return <em>n</em> random entity strings without replacement.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>n</strong> (<em>int</em>) – Number of entities to sample.  Must be non-negative and at most
+<code class="docutils literal notranslate"><span class="pre">num_entities</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Randomly selected entity string labels.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.sample_relation">
+<span class="sig-name descname"><span class="pre">sample_relation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.sample_relation" title="Link to this definition"></a></dt>
+<dd><p>Return <em>n</em> random relation strings without replacement.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>n</strong> (<em>int</em>) – Number of relations to sample.  Must be non-negative and at most
+<code class="docutils literal notranslate"><span class="pre">num_relations</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Randomly selected relation string labels.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.is_seen">
+<span class="sig-name descname"><span class="pre">is_seen</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.is_seen" title="Link to this definition"></a></dt>
+<dd><p>Check whether an entity or relation was present in the training set.</p>
+<p>Exactly one of <em>entity</em> or <em>relation</em> should be provided.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>entity</strong> (<em>str</em><em>, </em><em>optional</em>) – Entity string label to look up.</p></li>
+<li><p><strong>relation</strong> (<em>str</em><em>, </em><em>optional</em>) – Relation string label to look up.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if the given string is in the respective index mapping,
+<code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.save">
+<span class="sig-name descname"><span class="pre">save</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.save" title="Link to this definition"></a></dt>
+<dd><p>Persist the current model weights to the experiment directory.</p>
+<p>The checkpoint filename encodes the current timestamp so successive
+calls do not overwrite each other.  Ensemble models are saved with an
+<code class="docutils literal notranslate"><span class="pre">_ensemble_</span></code> infix in the filename.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.get_entity_index">
+<span class="sig-name descname"><span class="pre">get_entity_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.get_entity_index" title="Link to this definition"></a></dt>
+<dd><p>Return the integer index for a given entity string.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>str</em>) – Entity string label (must have been seen during training).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Corresponding row index in the entity embedding matrix.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.get_relation_index">
+<span class="sig-name descname"><span class="pre">get_relation_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.get_relation_index" title="Link to this definition"></a></dt>
+<dd><p>Return the integer index for a given relation string.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>str</em>) – Relation string label (must have been seen during training).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Corresponding row index in the relation embedding matrix.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.index_triple">
+<span class="sig-name descname"><span class="pre">index_triple</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">head_entity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tail_entity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.LongTensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.LongTensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.LongTensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.index_triple" title="Link to this definition"></a></dt>
+<dd><p>Convert string triple lists to integer index tensors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>head_entity</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Head entity string labels.</p></li>
+<li><p><strong>relation</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Relation string labels.</p></li>
+<li><p><strong>tail_entity</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Tail entity string labels.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>idx_head_entity, idx_relation, idx_tail_entity</strong> – Each has shape <code class="docutils literal notranslate"><span class="pre">(n,</span> <span class="pre">1)</span></code> containing the integer indices for the
+corresponding strings.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.LongTensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.add_new_entity_embeddings">
+<span class="sig-name descname"><span class="pre">add_new_entity_embeddings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entity_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">embeddings</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.FloatTensor</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.add_new_entity_embeddings" title="Link to this definition"></a></dt>
+<dd><p>Extend the entity embedding table with a new entity at inference time.</p>
+<p>The new entity is appended to both <code class="docutils literal notranslate"><span class="pre">entity_to_idx</span></code> / <code class="docutils literal notranslate"><span class="pre">idx_to_entity</span></code>
+mappings and the <code class="docutils literal notranslate"><span class="pre">entity_embeddings</span></code> weight tensor so that subsequent
+calls to prediction methods can reference it by name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>entity_name</strong> (<em>str</em>) – String label for the new entity.  If the entity already exists in
+the index no modification is made.</p></li>
+<li><p><strong>embeddings</strong> (<em>torch.FloatTensor</em>) – 1-D float tensor of length <code class="docutils literal notranslate"><span class="pre">embedding_dim</span></code> containing the
+pre-computed embedding for the new entity.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.get_entity_embeddings">
+<span class="sig-name descname"><span class="pre">get_entity_embeddings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.FloatTensor</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.get_entity_embeddings" title="Link to this definition"></a></dt>
+<dd><p>Return the embedding vectors for the given entity strings.</p>
+<p>For standard (non-BPE) models the method looks up each string in
+<code class="docutils literal notranslate"><span class="pre">entity_to_idx</span></code> and returns the corresponding rows of the entity
+embedding matrix.  For BPE models subword token embeddings are
+fetched and flattened into a single vector per entity.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>items</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Entity string labels to retrieve.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Shape <code class="docutils literal notranslate"><span class="pre">(len(items),</span> <span class="pre">embedding_dim)</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.FloatTensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.get_relation_embeddings">
+<span class="sig-name descname"><span class="pre">get_relation_embeddings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">items</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.FloatTensor</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.get_relation_embeddings" title="Link to this definition"></a></dt>
+<dd><p>Return the embedding vectors for the given relation strings.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>items</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Relation string labels to retrieve.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Shape <code class="docutils literal notranslate"><span class="pre">(len(items),</span> <span class="pre">embedding_dim)</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.FloatTensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.construct_input_and_output">
+<span class="sig-name descname"><span class="pre">construct_input_and_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">head_entity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tail_entity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.LongTensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">torch.FloatTensor</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.construct_input_and_output" title="Link to this definition"></a></dt>
+<dd><p>Build an indexed triple tensor and a label tensor from string inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>head_entity</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Head entity string labels.</p></li>
+<li><p><strong>relation</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Relation string labels.</p></li>
+<li><p><strong>tail_entity</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Tail entity string labels.</p></li>
+<li><p><strong>labels</strong> (<em>list</em><em> or </em><em>array-like</em>) – Binary or soft labels (one per triple) used as training targets.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>x</strong> (<em>torch.LongTensor</em>) – Shape <code class="docutils literal notranslate"><span class="pre">(n,</span> <span class="pre">3)</span></code> integer-indexed triples.</p></li>
+<li><p><strong>labels</strong> (<em>torch.FloatTensor</em>) – Shape <code class="docutils literal notranslate"><span class="pre">(n,)</span></code> float label tensor.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveKGE.parameters">
+<span class="sig-name descname"><span class="pre">parameters</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveKGE.parameters" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dicee.abstracts.InteractiveQueryDecomposition">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">dicee.abstracts.</span></span><span class="sig-name descname"><span class="pre">InteractiveQueryDecomposition</span></span><a class="headerlink" href="#dicee.abstracts.InteractiveQueryDecomposition" title="Link to this definition"></a></dt>
+<dd><p>Mixin that provides fuzzy-logic operators for multi-hop EPFO query answering.</p>
+<p>The three families of operators — T-norm, T-conorm, and negation norm — are
+applied element-wise over entity score tensors to compose complex queries
+from atomic link-prediction results (e.g. 2p, 3p, 2i, ip, up).</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.InteractiveQueryDecomposition.t_norm">
+<span class="sig-name descname"><span class="pre">t_norm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tens_1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tens_2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tnorm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'min'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#dicee.abstracts.InteractiveQueryDecomposition.t_norm" title="Link to this definition"></a></dt>
+<dd><p>Apply a T-norm to combine two entity score distributions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tens_1</strong> (<em>torch.Tensor</em>) – Score tensors of identical shape, values in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p></li>
+<li><p><strong>tens_2</strong> (<em>torch.Tensor</em>) – Score tensors of identical shape, values in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p></li>
+<li><p><strong>tnorm</strong> (<em>str</em>) – Operator to use.  <code class="docutils literal notranslate"><span class="pre">'min'</span></code> applies the Gödel (min) T-norm;
+<code class="docutils literal notranslate"><span class="pre">'prod'</span></code> applies the product T-norm.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Element-wise combined scores of the same shape as the inputs.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.InteractiveQueryDecomposition.tensor_t_norm">
+<span class="sig-name descname"><span class="pre">tensor_t_norm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subquery_scores</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.FloatTensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tnorm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'min'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.FloatTensor</span></span></span><a class="headerlink" href="#dicee.abstracts.InteractiveQueryDecomposition.tensor_t_norm" title="Link to this definition"></a></dt>
+<dd><p>Compute T-norm over [0,1] ^{n   imes d} where n denotes the number of hops and d denotes number of entities</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.InteractiveQueryDecomposition.t_conorm">
+<span class="sig-name descname"><span class="pre">t_conorm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tens_1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tens_2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tconorm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'min'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#dicee.abstracts.InteractiveQueryDecomposition.t_conorm" title="Link to this definition"></a></dt>
+<dd><p>Apply a T-conorm (S-norm) to combine two score distributions (union).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tens_1</strong> (<em>torch.Tensor</em>) – Score tensors of identical shape, values in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p></li>
+<li><p><strong>tens_2</strong> (<em>torch.Tensor</em>) – Score tensors of identical shape, values in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p></li>
+<li><p><strong>tconorm</strong> (<em>str</em>) – Operator to use.  <code class="docutils literal notranslate"><span class="pre">'min'</span></code> applies the Gödel (max) T-conorm;
+<code class="docutils literal notranslate"><span class="pre">'prod'</span></code> applies the probabilistic sum T-conorm.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Element-wise combined scores of the same shape as the inputs.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.InteractiveQueryDecomposition.negnorm">
+<span class="sig-name descname"><span class="pre">negnorm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tens_1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">torch.Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lambda_</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neg_norm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'standard'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">torch.Tensor</span></span></span><a class="headerlink" href="#dicee.abstracts.InteractiveQueryDecomposition.negnorm" title="Link to this definition"></a></dt>
+<dd><p>Apply a negation norm (complement) to an entity score distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tens_1</strong> (<em>torch.Tensor</em>) – Input score tensor, values in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>.</p></li>
+<li><p><strong>lambda</strong> (<em>float</em>) – Shape parameter used by the Sugeno and Yager negation norms.
+Ignored for the standard complement.</p></li>
+<li><p><strong>neg_norm</strong> (<em>str</em>) – Which negation to apply: <code class="docutils literal notranslate"><span class="pre">'standard'</span></code> (<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">x</span></code>),
+<code class="docutils literal notranslate"><span class="pre">'sugeno'</span></code>, or <code class="docutils literal notranslate"><span class="pre">'yager'</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Complemented score tensor of the same shape as <em>tens_1</em>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractCallback">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">dicee.abstracts.</span></span><span class="sig-name descname"><span class="pre">AbstractCallback</span></span><a class="headerlink" href="#dicee.abstracts.AbstractCallback" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">abc.ABC</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">lightning.pytorch.callbacks.Callback</span></code></p>
+<p>Abstract base class for KGE training lifecycle callbacks.</p>
+<p>Concrete sub-classes override one or more hook methods to perform
+custom actions at specific points during training (e.g. weight
+averaging, periodic evaluation, model checkpointing).  All hooks have
+empty default implementations so sub-classes only need to override the
+hooks they care about.</p>
+<p>Callbacks are registered by passing them to the trainer’s <em>callbacks</em>
+list.  They are also compatible with PyTorch Lightning trainers because
+this class extends <code class="docutils literal notranslate"><span class="pre">lightning.pytorch.callbacks.Callback</span></code>.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractCallback.on_init_start">
+<span class="sig-name descname"><span class="pre">on_init_start</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractCallback.on_init_start" title="Link to this definition"></a></dt>
+<dd><p>Called when the trainer is about to be constructed.</p>
+<p>Override to perform setup that must happen before any trainer
+state is initialised.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractCallback.on_init_end">
+<span class="sig-name descname"><span class="pre">on_init_end</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractCallback.on_init_end" title="Link to this definition"></a></dt>
+<dd><p>Called immediately after the trainer has been constructed.</p>
+<p>Override to perform setup that requires a fully initialised trainer.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractCallback.on_fit_start">
+<span class="sig-name descname"><span class="pre">on_fit_start</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trainer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractCallback.on_fit_start" title="Link to this definition"></a></dt>
+<dd><p>Called once before the first training epoch.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trainer</strong> (<a class="reference internal" href="#dicee.abstracts.AbstractTrainer" title="dicee.abstracts.AbstractTrainer"><em>AbstractTrainer</em></a><em> or </em><em>pl.Trainer</em>) – The active trainer instance.</p></li>
+<li><p><strong>model</strong> (<a class="reference internal" href="../models/base_model/index.html#dicee.models.base_model.BaseKGE" title="dicee.models.base_model.BaseKGE"><em>BaseKGE</em></a>) – The model about to be trained.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractCallback.on_train_epoch_end">
+<span class="sig-name descname"><span class="pre">on_train_epoch_end</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trainer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractCallback.on_train_epoch_end" title="Link to this definition"></a></dt>
+<dd><p>Called at the end of each training epoch.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trainer</strong> (<a class="reference internal" href="#dicee.abstracts.AbstractTrainer" title="dicee.abstracts.AbstractTrainer"><em>AbstractTrainer</em></a><em> or </em><em>pl.Trainer</em>) – The active trainer instance.</p></li>
+<li><p><strong>model</strong> (<a class="reference internal" href="../models/base_model/index.html#dicee.models.base_model.BaseKGE" title="dicee.models.base_model.BaseKGE"><em>BaseKGE</em></a>) – The model being trained.  <code class="docutils literal notranslate"><span class="pre">model.loss_history</span></code> contains the
+per-epoch average losses accumulated so far.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractCallback.on_train_batch_end">
+<span class="sig-name descname"><span class="pre">on_train_batch_end</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractCallback.on_train_batch_end" title="Link to this definition"></a></dt>
+<dd><p>Called after each mini-batch gradient update.</p>
+<p>Override to inspect or modify the model at a finer granularity than
+epoch-level hooks.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractCallback.on_fit_end">
+<span class="sig-name descname"><span class="pre">on_fit_end</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractCallback.on_fit_end" title="Link to this definition"></a></dt>
+<dd><p>Called once after the final training epoch completes.</p>
+<p>Override to perform post-training actions such as saving the final
+model state, computing evaluation metrics, or cleaning up resources.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">dicee.abstracts.</span></span><span class="sig-name descname"><span class="pre">AbstractPPECallback</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_epochs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epoch_to_start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">last_percent_to_consider</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#dicee.abstracts.AbstractCallback" title="dicee.abstracts.AbstractCallback"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AbstractCallback</span></code></a></p>
+<p>Abstract base class for Post-training Parameter Ensembling (PPE) callbacks.</p>
+<p>Sub-classes implement weight-averaging strategies (SWA, EMA, SWAG, …) by
+overriding <code class="xref py py-meth docutils literal notranslate"><span class="pre">on_train_epoch_end()</span></code> and <a class="reference internal" href="#dicee.abstracts.AbstractPPECallback.on_fit_end" title="dicee.abstracts.AbstractPPECallback.on_fit_end"><code class="xref py py-meth docutils literal notranslate"><span class="pre">on_fit_end()</span></code></a>.  Common
+book-keeping (epoch counter, sample counter, alpha weights) is managed
+here.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>num_epochs</strong> (<em>int</em>) – Total number of training epochs.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – Experiment directory where averaged checkpoints will be written.</p></li>
+<li><p><strong>epoch_to_start</strong> (<em>int</em>) – First epoch at which the averaging procedure should begin.</p></li>
+<li><p><strong>last_percent_to_consider</strong> (<em>float</em>) – Fraction of the total training epochs (counted from the end) whose
+checkpoints are included in the ensemble.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback.num_epochs">
+<span class="sig-name descname"><span class="pre">num_epochs</span></span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback.num_epochs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback.path">
+<span class="sig-name descname"><span class="pre">path</span></span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback.path" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback.sample_counter">
+<span class="sig-name descname"><span class="pre">sample_counter</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback.sample_counter" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback.epoch_count">
+<span class="sig-name descname"><span class="pre">epoch_count</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback.epoch_count" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback.alphas">
+<span class="sig-name descname"><span class="pre">alphas</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback.alphas" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback.on_fit_start">
+<span class="sig-name descname"><span class="pre">on_fit_start</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trainer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback.on_fit_start" title="Link to this definition"></a></dt>
+<dd><p>Called once before the first training epoch.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trainer</strong> (<a class="reference internal" href="#dicee.abstracts.AbstractTrainer" title="dicee.abstracts.AbstractTrainer"><em>AbstractTrainer</em></a><em> or </em><em>pl.Trainer</em>) – The active trainer instance.</p></li>
+<li><p><strong>model</strong> (<a class="reference internal" href="../models/base_model/index.html#dicee.models.base_model.BaseKGE" title="dicee.models.base_model.BaseKGE"><em>BaseKGE</em></a>) – The model about to be trained.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback.on_fit_end">
+<span class="sig-name descname"><span class="pre">on_fit_end</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trainer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback.on_fit_end" title="Link to this definition"></a></dt>
+<dd><p>Called once after the final training epoch completes.</p>
+<p>Override to perform post-training actions such as saving the final
+model state, computing evaluation metrics, or cleaning up resources.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.AbstractPPECallback.store_ensemble">
+<span class="sig-name descname"><span class="pre">store_ensemble</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param_ensemble</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#dicee.abstracts.AbstractPPECallback.store_ensemble" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveTrainKGE">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">dicee.abstracts.</span></span><span class="sig-name descname"><span class="pre">BaseInteractiveTrainKGE</span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveTrainKGE" title="Link to this definition"></a></dt>
+<dd><p>Abstract/base class for training knowledge graph embedding models interactively.
+This class provides methods for re-training KGE models and also Literal Embedding model.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveTrainKGE.train_triples">
+<span class="sig-name descname"><span class="pre">train_triples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">h</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iteration</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveTrainKGE.train_triples" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveTrainKGE.train_k_vs_all">
+<span class="sig-name descname"><span class="pre">train_k_vs_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">h</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iteration</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveTrainKGE.train_k_vs_all" title="Link to this definition"></a></dt>
+<dd><p>Train k vs all
+:param head_entity:
+:param relation:
+:param iteration:
+:param lr:
+:return:</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveTrainKGE.train">
+<span class="sig-name descname"><span class="pre">train</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">epoch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neg_sample_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_workers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveTrainKGE.train" title="Link to this definition"></a></dt>
+<dd><p>Retrained a pretrain model on an input KG via negative sampling.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dicee.abstracts.BaseInteractiveTrainKGE.train_literals">
+<span class="sig-name descname"><span class="pre">train_literals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">train_file_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_epochs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lit_lr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lit_normalization_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'z-norm'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1024</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling_ratio</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loader_backend</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'pandas'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freeze_entity_embeddings</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gate_residual</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suffle_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dicee.abstracts.BaseInteractiveTrainKGE.train_literals" title="Link to this definition"></a></dt>
+<dd><p>Trains the Literal Embeddings model using literal data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>train_file_path</strong> (<em>str</em>) – Path to the training data file.</p></li>
+<li><p><strong>num_epochs</strong> (<em>int</em>) – Number of training epochs.</p></li>
+<li><p><strong>lit_lr</strong> (<em>float</em>) – Learning rate for the literal model.</p></li>
+<li><p><strong>norm_type</strong> (<em>str</em>) – Normalization type to use (‘z-norm’, ‘min-max’, or None).</p></li>
+<li><p><strong>batch_size</strong> (<em>int</em>) – Batch size for training.</p></li>
+<li><p><strong>sampling_ratio</strong> (<em>float</em>) – Ratio of training triples to use.</p></li>
+<li><p><strong>loader_backend</strong> (<em>str</em>) – Backend for loading the dataset (‘pandas’ or ‘rdflib’).</p></li>
+<li><p><strong>freeze_entity_embeddings</strong> (<em>bool</em>) – If True, freeze the entity embeddings during training.</p></li>
+<li><p><strong>gate_residual</strong> (<em>bool</em>) – If True, use gate residual connections in the model.</p></li>
+<li><p><strong>device</strong> (<em>str</em>) – Device to use for training (‘cuda’ or ‘cpu’). If None, will use available GPU or CPU.</p></li>
+<li><p><strong>suffle_data</strong> (<em>bool</em>) – If True, shuffle the dataset before training.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../__main__/index.html" class="btn btn-neutral float-left" title="dicee.__main__" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../analyse_experiments/index.html" class="btn btn-neutral float-right" title="dicee.analyse_experiments" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Caglar Demir.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

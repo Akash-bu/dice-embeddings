@@ -1,0 +1,336 @@
+dicee.models.complex
+====================
+
+.. py:module:: dicee.models.complex
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.models.complex.ConEx
+   dicee.models.complex.AConEx
+   dicee.models.complex.ComplEx
+   dicee.models.complex.RotatE
+
+
+Module Contents
+---------------
+
+.. py:class:: ConEx(args)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Convolutional ComplEx Knowledge Graph Embeddings
+
+
+   .. py:attribute:: name
+      :value: 'ConEx'
+
+
+
+   .. py:attribute:: conv2d
+
+
+   .. py:attribute:: fc_num_input
+
+
+   .. py:attribute:: fc1
+
+
+   .. py:attribute:: norm_fc1
+
+
+   .. py:attribute:: bn_conv2d
+
+
+   .. py:attribute:: feature_map_dropout
+
+
+   .. py:method:: residual_convolution(C_1: Tuple[torch.Tensor, torch.Tensor], C_2: Tuple[torch.Tensor, torch.Tensor]) -> torch.FloatTensor
+
+      Compute residual score of two complex-valued embeddings.
+      :param C_1: a tuple of two pytorch tensors that corresponds complex-valued embeddings
+      :param C_2: a tuple of two pytorch tensors that corresponds complex-valued embeddings
+      :return:
+
+
+
+   .. py:method:: forward_k_vs_all(x: torch.Tensor) -> torch.FloatTensor
+
+      Score a ``(head, relation)`` batch against every entity.
+
+      Sub-classes must override this method.  The default implementation
+      raises ``ValueError`` to make missing overrides obvious at runtime.
+
+      :returns: Shape ``(batch_size, num_entities)`` score matrix.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_triples(x: torch.Tensor) -> torch.FloatTensor
+
+      Score a batch of ``(head, relation, tail)`` index triples.
+
+      :param x: Shape ``(batch_size, 3)`` integer tensor where each row is
+                ``[head_idx, relation_idx, tail_idx]``.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size,)`` triple scores.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_sample(x: torch.Tensor, target_entity_idx: torch.Tensor)
+
+      Score a ``(head, relation)`` batch against a sampled subset of entities.
+
+      Used by ``KvsSample`` and ``1vsSample`` datasets.  Sub-classes that
+      support sample-based labelling must override this method.
+
+      :returns: Shape ``(batch_size, k)`` score matrix where *k* is the number
+                of sampled target entities.
+      :rtype: torch.FloatTensor
+
+
+
+.. py:class:: AConEx(args)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Additive Convolutional ComplEx Knowledge Graph Embeddings
+
+
+   .. py:attribute:: name
+      :value: 'AConEx'
+
+
+
+   .. py:attribute:: conv2d
+
+
+   .. py:attribute:: fc_num_input
+
+
+   .. py:attribute:: fc1
+
+
+   .. py:attribute:: norm_fc1
+
+
+   .. py:attribute:: bn_conv2d
+
+
+   .. py:attribute:: feature_map_dropout
+
+
+   .. py:method:: residual_convolution(C_1: Tuple[torch.Tensor, torch.Tensor], C_2: Tuple[torch.Tensor, torch.Tensor]) -> torch.FloatTensor
+
+      Compute residual score of two complex-valued embeddings.
+      :param C_1: a tuple of two pytorch tensors that corresponds complex-valued embeddings
+      :param C_2: a tuple of two pytorch tensors that corresponds complex-valued embeddings
+      :return:
+
+
+
+   .. py:method:: forward_k_vs_all(x: torch.Tensor) -> torch.FloatTensor
+
+      Score a ``(head, relation)`` batch against every entity.
+
+      Sub-classes must override this method.  The default implementation
+      raises ``ValueError`` to make missing overrides obvious at runtime.
+
+      :returns: Shape ``(batch_size, num_entities)`` score matrix.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_triples(x: torch.Tensor) -> torch.FloatTensor
+
+      Score a batch of ``(head, relation, tail)`` index triples.
+
+      :param x: Shape ``(batch_size, 3)`` integer tensor where each row is
+                ``[head_idx, relation_idx, tail_idx]``.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size,)`` triple scores.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_sample(x: torch.Tensor, target_entity_idx: torch.Tensor)
+
+      Score a ``(head, relation)`` batch against a sampled subset of entities.
+
+      Used by ``KvsSample`` and ``1vsSample`` datasets.  Sub-classes that
+      support sample-based labelling must override this method.
+
+      :returns: Shape ``(batch_size, k)`` score matrix where *k* is the number
+                of sampled target entities.
+      :rtype: torch.FloatTensor
+
+
+
+.. py:class:: ComplEx(args)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Base class for all Knowledge Graph Embedding models.
+
+   Inherits the Lightning training loop from :class:`BaseKGELightning` and
+   adds the embedding tables, normalisation / dropout layers, and the
+   routing logic that dispatches ``forward()`` calls to the appropriate
+   scoring method.
+
+   Sub-classes must implement at minimum:
+
+   * :meth:`forward_triples` — score a batch of ``(h, r, t)`` triples.
+   * :meth:`forward_k_vs_all` — score a ``(h, r)`` batch against every entity.
+
+   :param args: Flat configuration dictionary produced by
+                ``vars(argparse.Namespace)``.
+                Required keys: ``embedding_dim``, ``num_entities``, ``num_relations``,
+                ``learning_rate`` (or ``lr``), ``optim``, ``scoring_technique``.
+   :type args: dict
+
+
+   .. py:attribute:: name
+      :value: 'ComplEx'
+
+
+
+   .. py:method:: score(head_ent_emb: torch.FloatTensor, rel_ent_emb: torch.FloatTensor, tail_ent_emb: torch.FloatTensor)
+      :staticmethod:
+
+
+
+   .. py:method:: k_vs_all_score(emb_h: torch.FloatTensor, emb_r: torch.FloatTensor, emb_E: torch.FloatTensor)
+      :staticmethod:
+
+
+      :param emb_h:
+      :param emb_r:
+      :param emb_E:
+
+
+
+   .. py:method:: forward_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
+
+      Score a ``(head, relation)`` batch against every entity.
+
+      Sub-classes must override this method.  The default implementation
+      raises ``ValueError`` to make missing overrides obvious at runtime.
+
+      :returns: Shape ``(batch_size, num_entities)`` score matrix.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_sample(x: torch.LongTensor, target_entity_idx: torch.LongTensor)
+
+      Score a ``(head, relation)`` batch against a sampled subset of entities.
+
+      Used by ``KvsSample`` and ``1vsSample`` datasets.  Sub-classes that
+      support sample-based labelling must override this method.
+
+      :returns: Shape ``(batch_size, k)`` score matrix where *k* is the number
+                of sampled target entities.
+      :rtype: torch.FloatTensor
+
+
+
+.. py:class:: RotatE(args)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   RotatE: knowledge graph embedding by relational rotation in complex space.
+
+   Represents each entity as a complex vector in ℂ^(d/2), obtained by
+   splitting its ``d``-dimensional embedding into a real half and an
+   imaginary half.  Each relation is represented by ``d/2`` phase angles
+   θ that define a unit-modulus rotation ``r_i = e^{iθ_i}``; since a phase
+   angle needs only one real number, the relation embedding table is
+   reinitialised at half of the entity embedding size.  A true triple
+   ``(h, r, t)`` should satisfy ``h ∘ r ≈ t`` under element-wise complex
+   multiplication, giving the score::
+
+       f(h, r, t) = margin - ||h ∘ r - t||_2
+
+   Unlike TransE, RotatE can model symmetric, antisymmetric, inverse, and
+   composition relation patterns.
+
+   .. rubric:: References
+
+   Sun et al., *RotatE: Knowledge Graph Embedding by Relational Rotation in
+   Complex Space*, ICLR 2019.  https://arxiv.org/abs/1902.10197
+
+
+   .. py:attribute:: name
+      :value: 'RotatE'
+
+
+
+   .. py:attribute:: margin
+      :value: 6.0
+
+
+
+   .. py:attribute:: half_dim
+
+
+   .. py:attribute:: relation_embeddings
+
+
+   .. py:method:: score(head_ent_emb: torch.FloatTensor, rel_ent_emb: torch.FloatTensor, tail_ent_emb: torch.FloatTensor) -> torch.FloatTensor
+
+      Score a batch of triples using the RotatE margin-distance formula.
+
+      :param head_ent_emb: Each has shape ``(batch_size, embedding_dim)``.
+      :type head_ent_emb: torch.FloatTensor
+      :param tail_ent_emb: Each has shape ``(batch_size, embedding_dim)``.
+      :type tail_ent_emb: torch.FloatTensor
+      :param rel_ent_emb: Shape ``(batch_size, d/2)`` relation phase angles θ.
+      :type rel_ent_emb: torch.FloatTensor
+
+      :returns: Shape ``(batch_size,)`` scores equal to
+                ``margin - ||h ∘ r - t||_2``.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_all(x: torch.Tensor) -> torch.FloatTensor
+
+      KvsAll forward pass: score head/relation against all entities.
+
+      Computes ``margin - ||h ∘ r - e||_2`` for every entity embedding *e*.
+
+      :param x: Shape ``(batch_size, 2)`` integer tensor ``[head_idx, relation_idx]``.
+      :type x: torch.Tensor
+
+      :returns: Shape ``(batch_size, num_entities)`` score matrix.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_sample(x: torch.Tensor, target_entity_idx: torch.Tensor) -> torch.FloatTensor
+
+      KvsSample forward pass: score head/relation against a sampled entity subset.
+
+      Computes ``margin - ||h ∘ r - e||_2`` for each of the *k* sampled
+      entities *e*.
+
+      :param x: Shape ``(batch_size, 2)`` integer tensor ``[head_idx, relation_idx]``.
+      :type x: torch.Tensor
+      :param target_entity_idx: Shape ``(batch_size, k)`` indices of the *k* target entities per sample.
+      :type target_entity_idx: torch.Tensor
+
+      :returns: Shape ``(batch_size, k)`` score matrix.
+      :rtype: torch.FloatTensor
+
+
+

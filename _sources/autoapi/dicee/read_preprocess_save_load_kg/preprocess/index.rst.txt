@@ -1,0 +1,77 @@
+dicee.read_preprocess_save_load_kg.preprocess
+=============================================
+
+.. py:module:: dicee.read_preprocess_save_load_kg.preprocess
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   dicee.read_preprocess_save_load_kg.preprocess.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.read_preprocess_save_load_kg.preprocess.PreprocessKG
+
+
+Module Contents
+---------------
+
+.. py:data:: logger
+
+.. py:class:: PreprocessKG(kg)
+
+   Preprocess the data in memory
+
+
+   .. py:attribute:: kg
+
+
+   .. py:method:: start() -> None
+
+      Preprocess train, valid and test datasets stored in knowledge graph instance
+
+      Parameter
+      ---------
+
+      :rtype: None
+
+
+
+   .. py:method:: preprocess_with_byte_pair_encoding()
+
+
+   .. py:method:: preprocess_with_byte_pair_encoding_with_padding() -> None
+
+      Preprocess with byte pair encoding and add padding
+
+
+
+   .. py:method:: preprocess_with_pandas() -> None
+
+      Preprocess with pandas: add reciprocal triples, construct vocabulary, and index datasets
+
+
+
+   .. py:method:: preprocess_with_polars() -> None
+
+      Preprocess with polars: add reciprocal triples and create indexed datasets
+
+
+
+   .. py:method:: sequential_vocabulary_construction() -> None
+
+      (1) Read input data into memory
+      (2) Remove triples with a condition
+      (3) Serialize vocabularies in a pandas dataframe where
+                  => the index is integer and
+                  => a single column is string (e.g. URI)
+
+
+

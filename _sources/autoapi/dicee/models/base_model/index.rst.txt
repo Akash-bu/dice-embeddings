@@ -1,0 +1,601 @@
+dicee.models.base_model
+=======================
+
+.. py:module:: dicee.models.base_model
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   dicee.models.base_model.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.models.base_model.BaseKGELightning
+   dicee.models.base_model.BaseKGE
+   dicee.models.base_model.IdentityClass
+
+
+Module Contents
+---------------
+
+.. py:data:: logger
+
+.. py:class:: BaseKGELightning(*args, **kwargs)
+
+   Bases: :py:obj:`lightning.LightningModule`
+
+
+   Thin PyTorch Lightning wrapper shared by all KGE models.
+
+   Provides the standard Lightning training loop hooks (``training_step``,
+   ``on_train_epoch_end``, ``configure_optimizers``) as well as a helper
+   for reporting model size.  All concrete KGE models should extend
+   :class:`BaseKGE` rather than this class directly.
+
+
+   .. py:attribute:: training_step_outputs
+      :value: []
+
+
+
+   .. py:method:: mem_of_model() -> Dict
+
+      Size of model in MB and number of params
+
+
+
+   .. py:method:: training_step(batch, batch_idx=None)
+
+      Execute one optimisation step for the given mini-batch.
+
+      Handles two- and three-element batches produced by the different
+      dataset classes (``KvsAll`` / ``NegSample`` vs. ``KvsSample``).
+
+      :param batch: ``(x, y)`` for standard scoring, or ``(x, y_select, y)`` for
+                    sample-based labelling.
+      :type batch: tuple
+      :param batch_idx: Index of the current batch (unused, kept for Lightning API compat).
+      :type batch_idx: int, optional
+
+      :returns: Scalar loss value for this batch.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: loss_function(yhat_batch: torch.FloatTensor, y_batch: torch.FloatTensor) -> torch.FloatTensor
+
+      Compute the loss between model predictions and targets.
+
+      Delegates to ``self.loss`` which is configured in
+      :class:`BaseKGE.__init__` based on the scoring technique
+      (``BCEWithLogitsLoss`` for entity/relation prediction,
+      ``CrossEntropyLoss`` for classification).
+
+      :param yhat_batch: Model output scores, shape ``(batch_size, *)``.
+      :type yhat_batch: torch.FloatTensor
+      :param y_batch: Ground-truth labels of the same shape as *yhat_batch*.
+      :type y_batch: torch.FloatTensor
+
+      :returns: Scalar loss value.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: on_train_epoch_end(*args, **kwargs)
+
+      Called in the training loop at the very end of the epoch.
+
+      To access all batch outputs at the end of the epoch, you can cache step outputs as an attribute of the
+      :class:`~lightning.pytorch.LightningModule` and access them in this hook:
+
+      .. code-block:: python
+
+          class MyLightningModule(L.LightningModule):
+              def __init__(self):
+                  super().__init__()
+                  self.training_step_outputs = []
+
+              def training_step(self):
+                  loss = ...
+                  self.training_step_outputs.append(loss)
+                  return loss
+
+              def on_train_epoch_end(self):
+                  # do something with all training_step outputs, for example:
+                  epoch_mean = torch.stack(self.training_step_outputs).mean()
+                  self.log("training_epoch_mean", epoch_mean)
+                  # free up the memory
+                  self.training_step_outputs.clear()
+
+
+
+
+   .. py:method:: test_epoch_end(outputs: List[Any])
+
+
+   .. py:method:: test_dataloader() -> None
+
+      An iterable or collection of iterables specifying test samples.
+
+      For more information about multiple dataloaders, see this :ref:`section <multiple-dataloaders>`.
+
+      For data processing use the following pattern:
+
+          - download in :meth:`prepare_data`
+          - process and split in :meth:`setup`
+
+      However, the above are only necessary for distributed processing.
+
+      .. warning:: do not assign state in prepare_data
+
+
+      - :meth:`~lightning.pytorch.trainer.trainer.Trainer.test`
+      - :meth:`prepare_data`
+      - :meth:`setup`
+
+      .. note::
+
+         Lightning tries to add the correct sampler for distributed and arbitrary hardware.
+         There is no need to set it yourself.
+
+      .. note::
+
+         If you don't need a test dataset and a :meth:`test_step`, you don't need to implement
+         this method.
+
+
+
+   .. py:method:: val_dataloader() -> None
+
+      An iterable or collection of iterables specifying validation samples.
+
+      For more information about multiple dataloaders, see this :ref:`section <multiple-dataloaders>`.
+
+      The dataloader you return will not be reloaded unless you set
+      :paramref:`~lightning.pytorch.trainer.trainer.Trainer.reload_dataloaders_every_n_epochs` to
+      a positive integer.
+
+      It's recommended that all data downloads and preparation happen in :meth:`prepare_data`.
+
+      - :meth:`~lightning.pytorch.trainer.trainer.Trainer.fit`
+      - :meth:`~lightning.pytorch.trainer.trainer.Trainer.validate`
+      - :meth:`prepare_data`
+      - :meth:`setup`
+
+      .. note::
+
+         Lightning tries to add the correct sampler for distributed and arbitrary hardware
+         There is no need to set it yourself.
+
+      .. note::
+
+         If you don't need a validation dataset and a :meth:`validation_step`, you don't need to
+         implement this method.
+
+
+
+   .. py:method:: predict_dataloader() -> None
+
+      An iterable or collection of iterables specifying prediction samples.
+
+      For more information about multiple dataloaders, see this :ref:`section <multiple-dataloaders>`.
+
+      It's recommended that all data downloads and preparation happen in :meth:`prepare_data`.
+
+      - :meth:`~lightning.pytorch.trainer.trainer.Trainer.predict`
+      - :meth:`prepare_data`
+      - :meth:`setup`
+
+      .. note::
+
+         Lightning tries to add the correct sampler for distributed and arbitrary hardware
+         There is no need to set it yourself.
+
+      :returns: A :class:`torch.utils.data.DataLoader` or a sequence of them specifying prediction samples.
+
+
+
+   .. py:method:: train_dataloader() -> None
+
+      An iterable or collection of iterables specifying training samples.
+
+      For more information about multiple dataloaders, see this :ref:`section <multiple-dataloaders>`.
+
+      The dataloader you return will not be reloaded unless you set
+      :paramref:`~lightning.pytorch.trainer.trainer.Trainer.reload_dataloaders_every_n_epochs` to
+      a positive integer.
+
+      For data processing use the following pattern:
+
+          - download in :meth:`prepare_data`
+          - process and split in :meth:`setup`
+
+      However, the above are only necessary for distributed processing.
+
+      .. warning:: do not assign state in prepare_data
+
+      - :meth:`~lightning.pytorch.trainer.trainer.Trainer.fit`
+      - :meth:`prepare_data`
+      - :meth:`setup`
+
+      .. note::
+
+         Lightning tries to add the correct sampler for distributed and arbitrary hardware.
+         There is no need to set it yourself.
+
+
+
+   .. py:method:: configure_optimizers(parameters=None)
+
+      Instantiate and return the optimiser for training.
+
+      The optimiser type is taken from ``self.optimizer_name`` which is set
+      in :meth:`BaseKGE.init_params_with_sanity_checking` from the
+      ``--optim`` argument.  Supported values: ``'SGD'``, ``'Adam'``,
+      ``'Adopt'``, ``'AdamW'``, ``'NAdam'``, ``'Adagrad'``, ``'ASGD'``,
+      ``'Muon'``.
+
+      :param parameters: Model parameters to optimise.  Defaults to
+                         ``self.parameters()`` when ``None``.
+      :type parameters: iterable, optional
+
+      :returns: The configured optimiser instance.
+      :rtype: torch.optim.Optimizer
+
+
+
+.. py:class:: BaseKGE(args: dict)
+
+   Bases: :py:obj:`BaseKGELightning`
+
+
+   Base class for all Knowledge Graph Embedding models.
+
+   Inherits the Lightning training loop from :class:`BaseKGELightning` and
+   adds the embedding tables, normalisation / dropout layers, and the
+   routing logic that dispatches ``forward()`` calls to the appropriate
+   scoring method.
+
+   Sub-classes must implement at minimum:
+
+   * :meth:`forward_triples` — score a batch of ``(h, r, t)`` triples.
+   * :meth:`forward_k_vs_all` — score a ``(h, r)`` batch against every entity.
+
+   :param args: Flat configuration dictionary produced by
+                ``vars(argparse.Namespace)``.
+                Required keys: ``embedding_dim``, ``num_entities``, ``num_relations``,
+                ``learning_rate`` (or ``lr``), ``optim``, ``scoring_technique``.
+   :type args: dict
+
+
+   .. py:attribute:: args
+
+
+   .. py:attribute:: embedding_dim
+      :value: None
+
+
+
+   .. py:attribute:: num_entities
+      :value: None
+
+
+
+   .. py:attribute:: num_relations
+      :value: None
+
+
+
+   .. py:attribute:: num_tokens
+      :value: None
+
+
+
+   .. py:attribute:: learning_rate
+      :value: None
+
+
+
+   .. py:attribute:: apply_unit_norm
+      :value: None
+
+
+
+   .. py:attribute:: input_dropout_rate
+      :value: None
+
+
+
+   .. py:attribute:: hidden_dropout_rate
+      :value: None
+
+
+
+   .. py:attribute:: optimizer_name
+      :value: None
+
+
+
+   .. py:attribute:: feature_map_dropout_rate
+      :value: None
+
+
+
+   .. py:attribute:: kernel_size
+      :value: None
+
+
+
+   .. py:attribute:: num_of_output_channels
+      :value: None
+
+
+
+   .. py:attribute:: weight_decay
+      :value: None
+
+
+
+   .. py:attribute:: loss
+
+
+   .. py:attribute:: selected_optimizer
+      :value: None
+
+
+
+   .. py:attribute:: normalizer_class
+      :value: None
+
+
+
+   .. py:attribute:: normalize_head_entity_embeddings
+
+
+   .. py:attribute:: normalize_relation_embeddings
+
+
+   .. py:attribute:: normalize_tail_entity_embeddings
+
+
+   .. py:attribute:: hidden_normalizer
+
+
+   .. py:attribute:: param_init
+
+
+   .. py:attribute:: input_dp_ent_real
+
+
+   .. py:attribute:: input_dp_rel_real
+
+
+   .. py:attribute:: hidden_dropout
+
+
+   .. py:attribute:: loss_history
+      :value: []
+
+
+
+   .. py:attribute:: byte_pair_encoding
+
+
+   .. py:attribute:: max_length_subword_tokens
+
+
+   .. py:attribute:: block_size
+
+
+   .. py:attribute:: defer_large_embeddings
+
+
+   .. py:method:: forward_byte_pair_encoded_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
+
+      KvsAll scoring for BPE-encoded head entities and relations.
+
+      Retrieves subword-unit embeddings for the head entity and relation,
+      reduces them to fixed-size vectors via a linear projection, then
+      scores against all BPE entity embeddings.
+
+      :param x: Shape ``(batch_size, 2, T)`` BPE token indices where dim 1
+                indexes ``[head, relation]`` and *T* is
+                ``max_length_subword_tokens``.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size, num_bpe_entities)`` score matrix.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_byte_pair_encoded_triple(x: Tuple[torch.LongTensor, torch.LongTensor]) -> torch.FloatTensor
+
+      NegSample scoring for BPE-encoded ``(head, relation, tail)`` triples.
+
+      Retrieves subword-unit embeddings for all three elements and reduces
+      them to fixed-size vectors via a linear projection before computing
+      the triple score.
+
+      :param x: Shape ``(batch_size, 3, T)`` BPE token indices.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size,)`` triple scores.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: init_params_with_sanity_checking() -> None
+
+      Populate model hyper-parameters from ``self.args`` with safe defaults.
+
+      Reads embedding dimension, learning rate, dropout rates, normalisation
+      strategy, optimizer name, and parameter initialisation scheme from the
+      ``args`` dict.  Falls back to sensible defaults for any missing key so
+      that minimal ``args`` dicts (e.g. for unit tests) are still valid.
+
+
+
+   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: torch.LongTensor = None) -> torch.FloatTensor
+
+      Route the forward pass to the appropriate scoring method.
+
+      Inspects the shape and type of *x* to decide which low-level scorer
+      to call:
+
+      * Tuple ``(x, y_idx)``   → :meth:`forward_k_vs_sample`
+      * ``(batch, 3)`` tensor  → :meth:`forward_triples`
+      * ``(batch, 2)`` tensor  → :meth:`forward_k_vs_all`
+      * BPE triple tensor      → :meth:`forward_byte_pair_encoded_triple`
+      * BPE pair tensor        → :meth:`forward_byte_pair_encoded_k_vs_all`
+
+      :param x: Either a plain index tensor or a ``(triple_idx, target_idx)``
+                tuple for sample-based labelling.
+      :type x: torch.LongTensor or Tuple[torch.LongTensor, torch.LongTensor]
+      :param y_idx: Target entity indices used by :meth:`forward_k_vs_sample`.
+                    Ignored when *x* is a plain tensor.
+      :type y_idx: torch.LongTensor, optional
+
+      :returns: Score tensor whose shape depends on the selected scorer.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_triples(x: torch.LongTensor) -> torch.Tensor
+
+      Score a batch of ``(head, relation, tail)`` index triples.
+
+      :param x: Shape ``(batch_size, 3)`` integer tensor where each row is
+                ``[head_idx, relation_idx, tail_idx]``.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size,)`` triple scores.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_all(*args, **kwargs)
+
+      Score a ``(head, relation)`` batch against every entity.
+
+      Sub-classes must override this method.  The default implementation
+      raises ``ValueError`` to make missing overrides obvious at runtime.
+
+      :returns: Shape ``(batch_size, num_entities)`` score matrix.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_sample(*args, **kwargs)
+
+      Score a ``(head, relation)`` batch against a sampled subset of entities.
+
+      Used by ``KvsSample`` and ``1vsSample`` datasets.  Sub-classes that
+      support sample-based labelling must override this method.
+
+      :returns: Shape ``(batch_size, k)`` score matrix where *k* is the number
+                of sampled target entities.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: get_triple_representation(idx_hrt) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]
+
+      Retrieve and normalise embedding vectors for a triple index batch.
+
+      :param idx_hrt: Shape ``(batch_size, 3)`` integer tensor with columns
+                      ``[head_idx, relation_idx, tail_idx]``.
+      :type idx_hrt: torch.LongTensor
+
+      :returns: **head_ent_emb, rel_ent_emb, tail_ent_emb** -- Each has shape ``(batch_size, embedding_dim)`` after applying the
+                configured dropout and normalisation.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: get_head_relation_representation(indexed_triple) -> Tuple[torch.FloatTensor, torch.FloatTensor]
+
+      Retrieve and normalise embedding vectors for head entities and relations.
+
+      :param indexed_triple: Shape ``(batch_size, 2)`` integer tensor with columns
+                             ``[head_idx, relation_idx]``.
+      :type indexed_triple: torch.LongTensor
+
+      :returns: **head_ent_emb, rel_ent_emb** -- Each has shape ``(batch_size, embedding_dim)`` after applying the
+                configured dropout and normalisation.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: get_sentence_representation(x: torch.LongTensor) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]
+
+      Retrieve BPE subword-unit embeddings for a batch of triples.
+
+      :param x: Shape ``(batch_size, 3, T)`` where *T* is
+                ``max_length_subword_tokens``.
+      :type x: torch.LongTensor
+
+      :returns: **head_ent_emb, rel_emb, tail_emb** -- Each has shape ``(batch_size, T, embedding_dim)``.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: get_bpe_head_and_relation_representation(x: torch.LongTensor) -> Tuple[torch.FloatTensor, torch.FloatTensor]
+
+      Retrieve unit-normalised BPE embeddings for head entities and relations.
+
+      Each entity/relation is represented as a sequence of *T* subword
+      tokens.  Their token embeddings are L2-normalised across the
+      sequence dimension so that the resulting matrix has unit Frobenius
+      norm.
+
+      :param x: Shape ``(batch_size, 2, T)`` where dim 1 indexes
+                ``[head, relation]`` and *T* is ``max_length_subword_tokens``.
+      :type x: torch.LongTensor
+
+      :returns: **head_ent_emb, rel_emb** -- Each has shape ``(batch_size, T, embedding_dim)``, L2-normalised
+                over the ``(T, D)`` dimensions.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: get_embeddings() -> Tuple[numpy.ndarray, numpy.ndarray]
+
+      Return the entity and relation embedding matrices as numpy arrays.
+
+      :returns: * **entity_embeddings** (*numpy.ndarray*) -- Shape ``(num_entities, embedding_dim)``.
+                * **relation_embeddings** (*numpy.ndarray*) -- Shape ``(num_relations, embedding_dim)``.
+
+
+
+.. py:class:: IdentityClass(args=None)
+
+   Bases: :py:obj:`torch.nn.Module`
+
+
+   No-op normalisation / dropout placeholder.
+
+   Used whenever no normalisation layer is requested (``--normalization None``).
+   All inputs are returned unchanged so that the rest of the model code does
+   not need conditional checks around normalisation calls.
+
+
+   .. py:attribute:: args
+      :value: None
+
+
+
+   .. py:method:: __call__(x)
+
+
+   .. py:method:: forward(x)
+      :staticmethod:
+
+
+

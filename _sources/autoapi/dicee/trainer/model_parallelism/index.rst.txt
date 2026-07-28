@@ -1,0 +1,77 @@
+dicee.trainer.model_parallelism
+===============================
+
+.. py:module:: dicee.trainer.model_parallelism
+
+.. autoapi-nested-parse::
+
+   Tensor Parallelism trainer for ensemble knowledge graph embeddings.
+
+   This module implements the tensor parallelism training strategy described in:
+     "Multiple Run Ensemble Learning with Low-Dimensional Knowledge Graph Embeddings"
+      https://arxiv.org/abs/2104.05003
+
+   The TensorParallel trainer creates an ensemble of models, each trained on a separate GPU,
+   allowing efficient utilization of multi-GPU systems through model parallelism.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   dicee.trainer.model_parallelism.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.trainer.model_parallelism.TensorParallel
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   dicee.trainer.model_parallelism.extract_input_outputs
+   dicee.trainer.model_parallelism.forward_backward_update_loss
+
+
+Module Contents
+---------------
+
+.. py:data:: logger
+
+.. py:function:: extract_input_outputs(z: list, device=None)
+
+.. py:function:: forward_backward_update_loss(z: Tuple, ensemble_model) -> float
+
+.. py:class:: TensorParallel(args, callbacks)
+
+   Bases: :py:obj:`dicee.abstracts.AbstractTrainer`
+
+
+   Abstract base class for KGE model trainers.
+
+   Provides the callback dispatch mechanism shared by all concrete trainer
+   implementations (TorchTrainer, TorchDDPTrainer, etc.).  Sub-classes call
+   the ``on_*`` hooks at the appropriate points in the training loop so that
+   any registered :class:`AbstractCallback` can react.
+
+   :param args: Processed configuration object.  Must expose at least
+                ``random_seed`` (int).
+   :type args: argparse.Namespace or similar
+   :param callbacks: Ordered list of callback instances to invoke at each lifecycle hook.
+   :type callbacks: list of AbstractCallback
+
+
+   .. py:method:: fit(*args, **kwargs)
+
+      Train model
+
+
+

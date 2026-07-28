@@ -1,0 +1,217 @@
+dicee.models.octonion
+=====================
+
+.. py:module:: dicee.models.octonion
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.models.octonion.OMult
+   dicee.models.octonion.ConvO
+   dicee.models.octonion.AConvO
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   dicee.models.octonion.octonion_mul
+   dicee.models.octonion.octonion_mul_norm
+
+
+Module Contents
+---------------
+
+.. py:function:: octonion_mul(*, O_1, O_2)
+
+.. py:function:: octonion_mul_norm(*, O_1, O_2)
+
+.. py:class:: OMult(args)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Base class for all Knowledge Graph Embedding models.
+
+   Inherits the Lightning training loop from :class:`BaseKGELightning` and
+   adds the embedding tables, normalisation / dropout layers, and the
+   routing logic that dispatches ``forward()`` calls to the appropriate
+   scoring method.
+
+   Sub-classes must implement at minimum:
+
+   * :meth:`forward_triples` — score a batch of ``(h, r, t)`` triples.
+   * :meth:`forward_k_vs_all` — score a ``(h, r)`` batch against every entity.
+
+   :param args: Flat configuration dictionary produced by
+                ``vars(argparse.Namespace)``.
+                Required keys: ``embedding_dim``, ``num_entities``, ``num_relations``,
+                ``learning_rate`` (or ``lr``), ``optim``, ``scoring_technique``.
+   :type args: dict
+
+
+   .. py:attribute:: name
+      :value: 'OMult'
+
+
+
+   .. py:method:: octonion_normalizer(emb_rel_e0, emb_rel_e1, emb_rel_e2, emb_rel_e3, emb_rel_e4, emb_rel_e5, emb_rel_e6, emb_rel_e7)
+      :staticmethod:
+
+
+
+   .. py:method:: score(head_ent_emb: torch.FloatTensor, rel_ent_emb: torch.FloatTensor, tail_ent_emb: torch.FloatTensor)
+
+
+   .. py:method:: k_vs_all_score(bpe_head_ent_emb, bpe_rel_ent_emb, E)
+
+
+   .. py:method:: forward_k_vs_all(x)
+
+      Completed.
+      Given a head entity and a relation (h,r), we compute scores for all possible triples,i.e.,
+      [score(h,r,x)|x \in Entities] => [0.0,0.1,...,0.8], shape=> (1, |Entities|)
+      Given a batch of head entities and relations => shape (size of batch,| Entities|)
+
+
+
+.. py:class:: ConvO(args: dict)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Base class for all Knowledge Graph Embedding models.
+
+   Inherits the Lightning training loop from :class:`BaseKGELightning` and
+   adds the embedding tables, normalisation / dropout layers, and the
+   routing logic that dispatches ``forward()`` calls to the appropriate
+   scoring method.
+
+   Sub-classes must implement at minimum:
+
+   * :meth:`forward_triples` — score a batch of ``(h, r, t)`` triples.
+   * :meth:`forward_k_vs_all` — score a ``(h, r)`` batch against every entity.
+
+   :param args: Flat configuration dictionary produced by
+                ``vars(argparse.Namespace)``.
+                Required keys: ``embedding_dim``, ``num_entities``, ``num_relations``,
+                ``learning_rate`` (or ``lr``), ``optim``, ``scoring_technique``.
+   :type args: dict
+
+
+   .. py:attribute:: name
+      :value: 'ConvO'
+
+
+
+   .. py:attribute:: conv2d
+
+
+   .. py:attribute:: fc_num_input
+
+
+   .. py:attribute:: fc1
+
+
+   .. py:attribute:: bn_conv2d
+
+
+   .. py:attribute:: norm_fc1
+
+
+   .. py:attribute:: feature_map_dropout
+
+
+   .. py:method:: octonion_normalizer(emb_rel_e0, emb_rel_e1, emb_rel_e2, emb_rel_e3, emb_rel_e4, emb_rel_e5, emb_rel_e6, emb_rel_e7)
+      :staticmethod:
+
+
+
+   .. py:method:: residual_convolution(O_1, O_2)
+
+
+   .. py:method:: forward_triples(x: torch.Tensor) -> torch.Tensor
+
+      Score a batch of ``(head, relation, tail)`` index triples.
+
+      :param x: Shape ``(batch_size, 3)`` integer tensor where each row is
+                ``[head_idx, relation_idx, tail_idx]``.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size,)`` triple scores.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_all(x: torch.Tensor)
+
+      Given a head entity and a relation (h,r), we compute scores for all entities.
+      [score(h,r,x)|x \in Entities] => [0.0,0.1,...,0.8], shape=> (1, |Entities|)
+      Given a batch of head entities and relations => shape (size of batch,| Entities|)
+
+
+
+.. py:class:: AConvO(args: dict)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Additive Convolutional Octonion Knowledge Graph Embeddings
+
+
+   .. py:attribute:: name
+      :value: 'AConvO'
+
+
+
+   .. py:attribute:: conv2d
+
+
+   .. py:attribute:: fc_num_input
+
+
+   .. py:attribute:: fc1
+
+
+   .. py:attribute:: bn_conv2d
+
+
+   .. py:attribute:: norm_fc1
+
+
+   .. py:attribute:: feature_map_dropout
+
+
+   .. py:method:: octonion_normalizer(emb_rel_e0, emb_rel_e1, emb_rel_e2, emb_rel_e3, emb_rel_e4, emb_rel_e5, emb_rel_e6, emb_rel_e7)
+      :staticmethod:
+
+
+
+   .. py:method:: residual_convolution(O_1, O_2)
+
+
+   .. py:method:: forward_triples(x: torch.Tensor) -> torch.Tensor
+
+      Score a batch of ``(head, relation, tail)`` index triples.
+
+      :param x: Shape ``(batch_size, 3)`` integer tensor where each row is
+                ``[head_idx, relation_idx, tail_idx]``.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size,)`` triple scores.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_all(x: torch.Tensor)
+
+      Given a head entity and a relation (h,r), we compute scores for all entities.
+      [score(h,r,x)|x \in Entities] => [0.0,0.1,...,0.8], shape=> (1, |Entities|)
+      Given a batch of head entities and relations => shape (size of batch,| Entities|)
+
+
+

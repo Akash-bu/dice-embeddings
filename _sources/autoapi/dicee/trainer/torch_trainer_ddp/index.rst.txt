@@ -1,0 +1,106 @@
+dicee.trainer.torch_trainer_ddp
+===============================
+
+.. py:module:: dicee.trainer.torch_trainer_ddp
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   dicee.trainer.torch_trainer_ddp.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.trainer.torch_trainer_ddp.TorchDDPTrainer
+   dicee.trainer.torch_trainer_ddp.NodeTrainer
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   dicee.trainer.torch_trainer_ddp.make_iterable_verbose
+
+
+Module Contents
+---------------
+
+.. py:data:: logger
+
+.. py:function:: make_iterable_verbose(iterable_object, verbose, desc='Default', position=None, leave=True) -> Iterable
+
+.. py:class:: TorchDDPTrainer(args, callbacks)
+
+   Bases: :py:obj:`dicee.abstracts.AbstractTrainer`
+
+
+   Abstract base class for KGE model trainers.
+
+   Provides the callback dispatch mechanism shared by all concrete trainer
+   implementations (TorchTrainer, TorchDDPTrainer, etc.).  Sub-classes call
+   the ``on_*`` hooks at the appropriate points in the training loop so that
+   any registered :class:`AbstractCallback` can react.
+
+   :param args: Processed configuration object.  Must expose at least
+                ``random_seed`` (int).
+   :type args: argparse.Namespace or similar
+   :param callbacks: Ordered list of callback instances to invoke at each lifecycle hook.
+   :type callbacks: list of AbstractCallback
+
+
+   .. py:method:: fit(*args, **kwargs)
+
+
+.. py:class:: NodeTrainer(trainer, model: torch.nn.Module, train_dataset_loader: torch.utils.data.DataLoader, callbacks, num_epochs: int)
+
+   .. py:attribute:: trainer
+
+
+   .. py:attribute:: local_rank
+
+
+   .. py:attribute:: global_rank
+
+
+   .. py:attribute:: optimizer
+
+
+   .. py:attribute:: train_dataset_loader
+
+
+   .. py:attribute:: loss_func
+
+
+   .. py:attribute:: callbacks
+
+
+   .. py:attribute:: model
+
+
+   .. py:attribute:: num_epochs
+
+
+   .. py:attribute:: loss_history
+      :value: []
+
+
+
+   .. py:attribute:: ctx
+
+
+   .. py:attribute:: scaler
+
+
+   .. py:method:: extract_input_outputs(z: list)
+
+
+   .. py:method:: train()
+
+

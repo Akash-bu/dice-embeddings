@@ -1,0 +1,16 @@
+dicee.scripts
+=============
+
+.. py:module:: dicee.scripts
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/dicee/scripts/index_serve/index
+   /autoapi/dicee/scripts/run/index
+
+

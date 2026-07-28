@@ -1,0 +1,251 @@
+dicee.models.quaternion
+=======================
+
+.. py:module:: dicee.models.quaternion
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.models.quaternion.QMult
+   dicee.models.quaternion.ConvQ
+   dicee.models.quaternion.AConvQ
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   dicee.models.quaternion.quaternion_mul_with_unit_norm
+
+
+Module Contents
+---------------
+
+.. py:function:: quaternion_mul_with_unit_norm(*, Q_1, Q_2)
+
+.. py:class:: QMult(args)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Base class for all Knowledge Graph Embedding models.
+
+   Inherits the Lightning training loop from :class:`BaseKGELightning` and
+   adds the embedding tables, normalisation / dropout layers, and the
+   routing logic that dispatches ``forward()`` calls to the appropriate
+   scoring method.
+
+   Sub-classes must implement at minimum:
+
+   * :meth:`forward_triples` — score a batch of ``(h, r, t)`` triples.
+   * :meth:`forward_k_vs_all` — score a ``(h, r)`` batch against every entity.
+
+   :param args: Flat configuration dictionary produced by
+                ``vars(argparse.Namespace)``.
+                Required keys: ``embedding_dim``, ``num_entities``, ``num_relations``,
+                ``learning_rate`` (or ``lr``), ``optim``, ``scoring_technique``.
+   :type args: dict
+
+
+   .. py:attribute:: name
+      :value: 'QMult'
+
+
+
+   .. py:attribute:: explicit
+      :value: True
+
+
+
+   .. py:method:: quaternion_multiplication_followed_by_inner_product(h, r, t)
+
+      :param h: shape: (`*batch_dims`, dim)
+          The head representations.
+      :param r: shape: (`*batch_dims`, dim)
+          The head representations.
+      :param t: shape: (`*batch_dims`, dim)
+          The tail representations.
+      :return:
+          Triple scores.
+
+
+
+   .. py:method:: quaternion_normalizer(x: torch.FloatTensor) -> torch.FloatTensor
+      :staticmethod:
+
+
+      Normalize the length of relation vectors, if the forward constraint has not been applied yet.
+
+      Absolute value of a quaternion
+
+      .. math::
+
+          |a + bi + cj + dk| = \sqrt{a^2 + b^2 + c^2 + d^2}
+
+      L2 norm of quaternion vector:
+
+      .. math::
+          \|x\|^2 = \sum_{i=1}^d |x_i|^2
+                   = \sum_{i=1}^d (x_i.re^2 + x_i.im_1^2 + x_i.im_2^2 + x_i.im_3^2)
+      :param x:
+          The vector.
+
+      :return:
+          The normalized vector.
+
+
+
+   .. py:method:: score(head_ent_emb: torch.FloatTensor, rel_ent_emb: torch.FloatTensor, tail_ent_emb: torch.FloatTensor)
+
+
+   .. py:method:: k_vs_all_score(bpe_head_ent_emb, bpe_rel_ent_emb, E)
+
+      :param bpe_head_ent_emb:
+      :param bpe_rel_ent_emb:
+      :param E:
+
+
+
+   .. py:method:: forward_k_vs_all(x)
+
+      :param x:
+
+
+
+   .. py:method:: forward_k_vs_sample(x, target_entity_idx)
+
+      Completed.
+      Given a head entity and a relation (h,r), we compute scores for all possible triples,i.e.,
+      [score(h,r,x)|x \in Entities] => [0.0,0.1,...,0.8], shape=> (1, |Entities|)
+      Given a batch of head entities and relations => shape (size of batch,| Entities|)
+
+
+
+.. py:class:: ConvQ(args)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Convolutional Quaternion Knowledge Graph Embeddings
+
+
+
+
+   .. py:attribute:: name
+      :value: 'ConvQ'
+
+
+
+   .. py:attribute:: entity_embeddings
+
+
+   .. py:attribute:: relation_embeddings
+
+
+   .. py:attribute:: conv2d
+
+
+   .. py:attribute:: fc_num_input
+
+
+   .. py:attribute:: fc1
+
+
+   .. py:attribute:: bn_conv1
+
+
+   .. py:attribute:: bn_conv2
+
+
+   .. py:attribute:: feature_map_dropout
+
+
+   .. py:method:: residual_convolution(Q_1, Q_2)
+
+
+   .. py:method:: forward_triples(indexed_triple: torch.Tensor) -> torch.Tensor
+
+      Score a batch of ``(head, relation, tail)`` index triples.
+
+      :param x: Shape ``(batch_size, 3)`` integer tensor where each row is
+                ``[head_idx, relation_idx, tail_idx]``.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size,)`` triple scores.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_all(x: torch.Tensor)
+
+      Given a head entity and a relation (h,r), we compute scores for all entities.
+      [score(h,r,x)|x \in Entities] => [0.0,0.1,...,0.8], shape=> (1, |Entities|)
+      Given a batch of head entities and relations => shape (size of batch,| Entities|)
+
+
+
+.. py:class:: AConvQ(args)
+
+   Bases: :py:obj:`dicee.models.base_model.BaseKGE`
+
+
+   Additive Convolutional Quaternion Knowledge Graph Embeddings
+
+
+   .. py:attribute:: name
+      :value: 'AConvQ'
+
+
+
+   .. py:attribute:: entity_embeddings
+
+
+   .. py:attribute:: relation_embeddings
+
+
+   .. py:attribute:: conv2d
+
+
+   .. py:attribute:: fc_num_input
+
+
+   .. py:attribute:: fc1
+
+
+   .. py:attribute:: bn_conv1
+
+
+   .. py:attribute:: bn_conv2
+
+
+   .. py:attribute:: feature_map_dropout
+
+
+   .. py:method:: residual_convolution(Q_1, Q_2)
+
+
+   .. py:method:: forward_triples(indexed_triple: torch.Tensor) -> torch.Tensor
+
+      Score a batch of ``(head, relation, tail)`` index triples.
+
+      :param x: Shape ``(batch_size, 3)`` integer tensor where each row is
+                ``[head_idx, relation_idx, tail_idx]``.
+      :type x: torch.LongTensor
+
+      :returns: Shape ``(batch_size,)`` triple scores.
+      :rtype: torch.FloatTensor
+
+
+
+   .. py:method:: forward_k_vs_all(x: torch.Tensor)
+
+      Given a head entity and a relation (h,r), we compute scores for all entities.
+      [score(h,r,x)|x \in Entities] => [0.0,0.1,...,0.8], shape=> (1, |Entities|)
+      Given a batch of head entities and relations => shape (size of batch,| Entities|)
+
+
+

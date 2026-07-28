@@ -1,0 +1,343 @@
+dicee.knowledge_graph_embeddings
+================================
+
+.. py:module:: dicee.knowledge_graph_embeddings
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   dicee.knowledge_graph_embeddings.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.knowledge_graph_embeddings.KGE
+
+
+Module Contents
+---------------
+
+.. py:data:: logger
+
+.. py:class:: KGE(path=None, url=None, construct_ensemble=False, model_name=None)
+
+   Bases: :py:obj:`dicee.abstracts.BaseInteractiveKGE`, :py:obj:`dicee.abstracts.InteractiveQueryDecomposition`, :py:obj:`dicee.abstracts.BaseInteractiveTrainKGE`
+
+
+   Knowledge Graph Embedding Class for interactive usage of pre-trained models
+
+
+   .. py:method:: __str__()
+
+
+   .. py:method:: to(device: str) -> None
+
+
+   .. py:method:: get_transductive_entity_embeddings(indices: Union[torch.LongTensor, List[str]], as_pytorch=False, as_numpy=False, as_list=True) -> Union[torch.FloatTensor, numpy.ndarray, List[float]]
+
+
+   .. py:method:: create_vector_database(collection_name: str, distance: str, location: str = 'localhost', port: int = 6333)
+
+
+   .. py:method:: generate(h='', r='')
+
+
+   .. py:method:: eval_lp_performance(dataset=List[Tuple[str, str, str]], filtered=True)
+
+
+   .. py:method:: predict_missing_head_entity(relation: Union[List[str], str], tail_entity: Union[List[str], str], within=None, batch_size=2, topk=1, return_indices=False) -> Tuple
+
+      Given a relation and a tail entity, return top k ranked head entity.
+
+      argmax_{e \in E } f(e,r,t), where r \in R, t \in E.
+
+      Parameter
+      ---------
+      relation:  Union[List[str], str]
+
+      String representation of selected relations.
+
+      tail_entity: Union[List[str], str]
+
+      String representation of selected entities.
+
+
+      k: int
+
+      Highest ranked k entities.
+
+      Returns: Tuple
+      ---------
+
+      Highest K scores and entities
+
+
+
+   .. py:method:: predict_missing_relations(head_entity: Union[List[str], str], tail_entity: Union[List[str], str], within=None, batch_size=2, topk=1, return_indices=False) -> Tuple
+
+      Given a head entity and a tail entity, return top k ranked relations.
+
+      argmax_{r \in R } f(h,r,t), where h, t \in E.
+
+
+      Parameter
+      ---------
+      head_entity: List[str]
+
+      String representation of selected entities.
+
+      tail_entity: List[str]
+
+      String representation of selected entities.
+
+
+      k: int
+
+      Highest ranked k entities.
+
+      Returns: Tuple
+      ---------
+
+      Highest K scores and entities
+
+
+
+   .. py:method:: predict_missing_tail_entity(head_entity: Union[List[str], str], relation: Union[List[str], str], within: List[str] = None, batch_size=2, topk=1, return_indices=False) -> torch.FloatTensor
+
+      Given a head entity and a relation, return top k ranked entities
+
+      argmax_{e \in E } f(h,r,e), where h \in E and r \in R.
+
+
+      Parameter
+      ---------
+      head_entity: List[str]
+
+      String representation of selected entities.
+
+      tail_entity: List[str]
+
+      String representation of selected entities.
+
+      Returns: Tuple
+      ---------
+
+      scores
+
+
+
+   .. py:method:: predict(*, h: Optional[Union[List[str], str]] = None, r: Optional[Union[List[str], str]] = None, t: Optional[Union[List[str], str]] = None, within: Optional[List[str]] = None, logits: bool = True) -> torch.FloatTensor
+
+      Predict scores for triples or missing triple elements.
+
+      :param h: Head entity/entities. None to predict heads.
+      :param r: Relation/relations. None to predict relations.
+      :param t: Tail entity/entities. None to predict tails.
+      :param within: Optional list of entities to restrict predictions to.
+      :param logits: If True, return raw scores. If False, return sigmoid scores (0-1).
+
+      :returns:
+
+                - Single triple (h, r, t): scalar score
+                - Missing element: vector of all possible scores
+      :rtype: torch.FloatTensor of scores. Shape depends on the query type
+
+      :raises TypeError: If inputs are not strings or lists of strings.
+      :raises ValueError: If a required argument for the query type is missing.
+
+      .. rubric:: Examples
+
+      >>> # Score a specific triple
+      >>> model.predict(h="Mongolia", r="isLocatedIn", t="Asia", logits=False)
+      tensor(0.9523)
+
+      >>> # Get scores for all possible tail entities
+      >>> model.predict(h="Mongolia", r="isLocatedIn", t=None)
+      tensor([0.21, 0.95, 0.03, ...])  # One score per entity
+
+
+
+   .. py:method:: predict_topk(*, h: Optional[Union[str, List[str]]] = None, r: Optional[Union[str, List[str]]] = None, t: Optional[Union[str, List[str]]] = None, topk: int = 10, within: Optional[List[str]] = None, batch_size: int = 1024) -> Union[List[Tuple[str, float]], List[List[Tuple[str, float]]]]
+
+      Predict top-k missing items in a given triple pattern.
+
+      :param h: Head entity/entities. None to predict heads.
+      :param r: Relation/relations. None to predict relations.
+      :param t: Tail entity/entities. None to predict tails.
+      :param topk: Number of top predictions to return.
+      :param within: Optional list of entities to restrict predictions to.
+      :param batch_size: Batch size for processing multiple queries.
+
+      :returns: List[(item, score), ...] of length topk.
+                For batch query: List of such lists, one per query.
+      :rtype: For single query
+
+      :raises TypeError: If h, r, or t is not a str or list of str.
+      :raises ValueError: If the required arguments for a query type are None.
+
+      .. rubric:: Examples
+
+      >>> model.predict_topk(h=["Mongolia"], r=["isLocatedIn"], topk=3)
+      [('Asia', 0.99), ('Europe', 0.02), ...]
+
+      >>> model.predict_topk(r=["isLocatedIn"], t=["Asia"], topk=5)
+      [('Mongolia', 0.85), ('China', 0.82), ...]
+
+
+
+   .. py:method:: triple_score(h: Union[List[str], str] = None, r: Union[List[str], str] = None, t: Union[List[str], str] = None, logits=False) -> torch.FloatTensor
+
+      Predict triple score
+
+      Parameter
+      ---------
+      head_entity: List[str]
+
+      String representation of selected entities.
+
+      relation: List[str]
+
+      String representation of selected relations.
+
+      tail_entity: List[str]
+
+      String representation of selected entities.
+
+      logits: bool
+
+      If logits is True, unnormalized score returned
+
+      Returns: Tuple
+      ---------
+
+      pytorch tensor of triple score
+
+
+
+   .. py:method:: return_multi_hop_query_results(aggregated_query_for_all_entities, k: int, only_scores)
+
+
+   .. py:method:: single_hop_query_answering(query: tuple, only_scores: bool = True, k: int = None, use_logits: bool = True)
+
+
+   .. py:method:: answer_multi_hop_query(query_type: Optional[str] = None, query: Optional[Tuple[Union[str, Tuple[str, str]], Ellipsis]] = None, queries: Optional[List[Tuple[Union[str, Tuple[str, str]], Ellipsis]]] = None, tnorm: str = 'prod', neg_norm: str = 'standard', lambda_: float = 0.0, k: int = 10, only_scores: bool = False, use_logits: bool = True) -> Union[List[Tuple[str, torch.Tensor]], List[List[Tuple[str, torch.Tensor]]]]
+
+      Answer multi-hop EPFO (Existential Positive First-Order) queries.
+
+      Supports 9 query types: 1p, 2p, 3p, 2i, 3i, ip, pi, 2u, up.
+      See docs/guides/multi_hop_queries.md for detailed query patterns.
+
+      :param query_type: Query pattern name. One of:
+                         - 1p: (e, (r,))                    # One-hop
+                         - 2p: (e, (r1, r2))               # Two-hop
+                         - 3p: (e, (r1, r2, r3))           # Three-hop
+                         - 2i: ((e1, (r1,)), (e2, (r2,)))  # Two-way intersection
+                         - 3i: ((e1, (r1,)), (e2, (r2,)), (e3, (r3,)))  # Three-way intersection
+                         - ip: (((e1, (r1,)), (e2, (r2,))), (r3,))  # Intersection + projection
+                         - pi: ((e, (r1, r2)), (r3,))                # Projection + intersection (2i meets 2p)
+                         - 2u: ((e1, (r1,)), (e2, (r2,)))           # Two-way union
+                         - up: ((e, (r1, r2)), (e, (r3,)))          # Union + projection
+      :param query: Single query tuple matching the query_type pattern.
+      :param queries: Batch of queries. If provided, query must be None.
+      :param tnorm: T-norm for intersection/union. Options: "prod", "min".
+      :param neg_norm: Negation norm. Options: "standard", "sugeno", "yager".
+      :param lambda_: Parameter for sugeno and yager negation (0.0-1.0).
+      :param k: Number of top answer entities to return.
+      :param only_scores: If True, return only scores tensor. If False, return (entity, score) tuples.
+      :param use_logits: If True, use raw model logits. If False, use sigmoid probabilities.
+
+      :returns: List[(entity, score), ...] of top-k answers.
+                For batch queries: List of such lists, one per query.
+      :rtype: For single query
+
+      :raises ValueError: If query_type is not in {1p, 2p, 3p, 2i, 3i, ip, pi, 2u, up}.
+      :raises AssertionError: If query structure doesn't match query_type pattern.
+
+      .. rubric:: Examples
+
+      >>> # 1p: Find entities located in Asia
+      >>> model.answer_multi_hop_query(
+      ...     query_type="1p",
+      ...     query=("Asia", ("isLocatedIn",)),
+      ...     k=5
+      ... )
+      [("Mongolia", 0.92), ("China", 0.89), ...]
+
+      >>> # 2p: Two-hop query (e.g., "capital of countries in Europe")
+      >>> model.answer_multi_hop_query(
+      ...     query_type="2p",
+      ...     query=("Europe", ("isLocatedIn", "hasCapital")),
+      ...     k=3
+      ... )
+      [("Paris", 0.85), ("Berlin", 0.82), ...]
+
+      >>> # 2i: Intersection query
+      >>> model.answer_multi_hop_query(
+      ...     query_type="2i",
+      ...     query=(("Asia", ("isLocatedIn",)), ("Mountains", ("hasGeography",))),
+      ...     k=5
+      ... )
+      [("Nepal", 0.78), ("Tibet", 0.65), ...]
+
+      .. seealso::
+
+         - docs/guides/multi_hop_queries.md: Complete guide with all query patterns
+         - tests/test_answer_multi_hop_query.py: Usage examples
+
+
+
+   .. py:method:: find_missing_triples(confidence: float, entities: List[str] = None, relations: List[str] = None, topk: int = 10, at_most: int = sys.maxsize) -> Set
+
+               Find missing triples
+
+               Iterative over a set of entities E and a set of relation R :
+      orall e \in E and
+      orall r \in R f(e,r,x)
+               Return (e,r,x)
+      ot\in G and  f(e,r,x) > confidence
+
+              Parameter
+              ---------
+              confidence: float
+
+              A threshold for an output of a sigmoid function given a triple.
+
+              topk: int
+
+              Highest ranked k item to select triples with f(e,r,x) > confidence .
+
+              at_most: int
+
+              Stop after finding at_most missing triples
+
+              Returns: Set
+              ---------
+
+              {(e,r,x) | f(e,r,x) > confidence \land (e,r,x)
+      ot\in G
+
+
+
+
+   .. py:method:: predict_literals(entity: Union[List[str], str] = None, attribute: Union[List[str], str] = None, denormalize_preds: bool = True) -> numpy.ndarray
+
+      Predicts literal values for given entities and attributes.
+
+      :param entity: Entity or list of entities to predict literals for.
+      :type entity: Union[List[str], str]
+      :param attribute: Attribute or list of attributes to predict literals for.
+      :type attribute: Union[List[str], str]
+      :param denormalize_preds: If True, denormalizes the predictions.
+      :type denormalize_preds: bool
+
+      :returns: Predictions for the given entities and attributes.
+      :rtype: numpy ndarray
+
+
+

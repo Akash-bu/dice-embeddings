@@ -1,0 +1,190 @@
+dicee.analyse_experiments
+=========================
+
+.. py:module:: dicee.analyse_experiments
+
+.. autoapi-nested-parse::
+
+   This script should be moved to dicee/scripts
+   Example:
+   python dicee/analyse_experiments.py --dir Experiments --features "model" "trainMRR" "testMRR"
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   dicee.analyse_experiments.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   dicee.analyse_experiments.Experiment
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   dicee.analyse_experiments.get_default_arguments
+   dicee.analyse_experiments.analyse
+
+
+Module Contents
+---------------
+
+.. py:data:: logger
+
+.. py:function:: get_default_arguments()
+
+.. py:class:: Experiment
+
+   .. py:attribute:: model_name
+      :value: []
+
+
+
+   .. py:attribute:: callbacks
+      :value: []
+
+
+
+   .. py:attribute:: embedding_dim
+      :value: []
+
+
+
+   .. py:attribute:: num_params
+      :value: []
+
+
+
+   .. py:attribute:: num_epochs
+      :value: []
+
+
+
+   .. py:attribute:: batch_size
+      :value: []
+
+
+
+   .. py:attribute:: lr
+      :value: []
+
+
+
+   .. py:attribute:: byte_pair_encoding
+      :value: []
+
+
+
+   .. py:attribute:: aswa
+      :value: []
+
+
+
+   .. py:attribute:: path_dataset_folder
+      :value: []
+
+
+
+   .. py:attribute:: full_storage_path
+      :value: []
+
+
+
+   .. py:attribute:: pq
+      :value: []
+
+
+
+   .. py:attribute:: train_mrr
+      :value: []
+
+
+
+   .. py:attribute:: train_h1
+      :value: []
+
+
+
+   .. py:attribute:: train_h3
+      :value: []
+
+
+
+   .. py:attribute:: train_h10
+      :value: []
+
+
+
+   .. py:attribute:: val_mrr
+      :value: []
+
+
+
+   .. py:attribute:: val_h1
+      :value: []
+
+
+
+   .. py:attribute:: val_h3
+      :value: []
+
+
+
+   .. py:attribute:: val_h10
+      :value: []
+
+
+
+   .. py:attribute:: test_mrr
+      :value: []
+
+
+
+   .. py:attribute:: test_h1
+      :value: []
+
+
+
+   .. py:attribute:: test_h3
+      :value: []
+
+
+
+   .. py:attribute:: test_h10
+      :value: []
+
+
+
+   .. py:attribute:: runtime
+      :value: []
+
+
+
+   .. py:attribute:: normalization
+      :value: []
+
+
+
+   .. py:attribute:: scoring_technique
+      :value: []
+
+
+
+   .. py:method:: save_experiment(x)
+
+
+   .. py:method:: to_df()
+
+
+.. py:function:: analyse(args)
+
