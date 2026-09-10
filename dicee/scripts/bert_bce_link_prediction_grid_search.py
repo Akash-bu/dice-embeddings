@@ -17,13 +17,13 @@ import time
 from datetime import datetime
 
 import torch
-from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import BertTokenizer
 
 from dicee.scripts.bert_bce_link_prediction import (
     BertTripleClassifier,
+    GroupedNegativeBatchSampler,
     JointBCEModel,
     TripleBCEDataset,
     add_nbert_tokens,
@@ -32,9 +32,13 @@ from dicee.scripts.bert_bce_link_prediction import (
     create_unique_output_dir,
     dataset_run_name,
     evaluate_link_prediction,
+    negative_filter_triples,
+    negative_sampling_bce_loss,
+    post_kge_parameter_update,
     read_support,
     read_triples,
     resolve_path,
+    training_entity_ids,
 )
 
 
@@ -67,7 +71,15 @@ def parse_args():
         default="bert-base-cased",
     )
     parser.add_argument("--device", type=str, default="cuda:0")
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=32,
+        help=(
+            "Target examples per optimizer step. Grouped batching uses the "
+            "largest multiple of 1 + --negative_ratio not exceeding this."
+        ),
+    )
     parser.add_argument("--candidate_batch_size", type=int, default=256)
     parser.add_argument(
         "--num_epochs",
@@ -77,6 +89,21 @@ def parse_args():
     )
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--negative_ratio", type=int, default=1)
+    parser.add_argument(
+        "--negative_loss_weighting",
+        choices=["balanced", "sampled"],
+        default="balanced",
+    )
+    parser.add_argument(
+        "--negative_filter_scope",
+        choices=["train", "train_valid", "all"],
+        default="train",
+    )
+    parser.add_argument(
+        "--calibration_lr",
+        type=float,
+        default=1e-3,
+    )
     parser.add_argument("--max_seq_length", type=int, default=64)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
@@ -171,6 +198,15 @@ def parse_args():
 def validate_args(args):
     if args.num_epochs < 1:
         raise ValueError("--num_epochs must be at least 1.")
+    if args.negative_ratio < 1:
+        raise ValueError("--negative_ratio must be at least 1.")
+    if args.batch_size < 1 + args.negative_ratio:
+        raise ValueError(
+            "--batch_size must be at least 1 + --negative_ratio for grouped "
+            "negative batches."
+        )
+    if args.calibration_lr <= 0.0:
+        raise ValueError("--calibration_lr must be positive.")
     if args.early_stopping_patience < 1:
         raise ValueError("--early_stopping_patience must be at least 1.")
     if args.early_stopping_min_delta < 0:
@@ -323,6 +359,13 @@ def write_aggregate_results(output_dir, trial_results):
         "epochs_ran",
         "early_stopped",
         "best_final_lambda",
+        "best_bert_scale",
+        "best_bert_bias",
+        "best_kge_scale",
+        "best_kge_bias",
+        "best_effective_bert_weight",
+        "best_effective_kge_weight",
+        "best_joint_bias",
         "valid_MRR",
         "valid_H@1",
         "valid_H@3",
@@ -338,6 +381,7 @@ def write_aggregate_results(output_dir, trial_results):
         for result in ordered_results:
             hyperparameters = result["hyperparameters"]
             metrics = result.get("best_validation_metrics") or {}
+            calibration = result.get("best_calibration") or {}
             writer.writerow(
                 {
                     "trial_id": result["trial_id"],
@@ -352,6 +396,17 @@ def write_aggregate_results(output_dir, trial_results):
                     "epochs_ran": result.get("epochs_ran"),
                     "early_stopped": result.get("early_stopped"),
                     "best_final_lambda": result.get("best_final_lambda"),
+                    "best_bert_scale": calibration.get("bert_scale"),
+                    "best_bert_bias": calibration.get("bert_bias"),
+                    "best_kge_scale": calibration.get("kge_scale"),
+                    "best_kge_bias": calibration.get("kge_bias"),
+                    "best_effective_bert_weight": calibration.get(
+                        "effective_bert_weight"
+                    ),
+                    "best_effective_kge_weight": calibration.get(
+                        "effective_kge_weight"
+                    ),
+                    "best_joint_bias": calibration.get("joint_bias"),
                     "valid_MRR": metrics.get("MRR"),
                     "valid_H@1": metrics.get("H@1"),
                     "valid_H@3": metrics.get("H@3"),
@@ -395,6 +450,12 @@ def build_search_definition(
         "num_epochs": args.num_epochs,
         "lr": args.lr,
         "negative_ratio": args.negative_ratio,
+        "negative_loss_weighting": args.negative_loss_weighting,
+        "negative_filter_scope": args.negative_filter_scope,
+        "negative_entity_pool": "train",
+        "negative_batching": "positive_groups",
+        "calibration_lr": args.calibration_lr,
+        "fusion_calibration": "affine_v1",
         "max_seq_length": args.max_seq_length,
         "num_workers": args.num_workers,
         "seed": args.seed,
@@ -508,18 +569,30 @@ def train_trial(
         relation_to_idx=shared_data["relation_to_idx"],
         max_seq_length=args.max_seq_length,
         negative_ratio=args.negative_ratio,
+        negative_entity_ids=shared_data["negative_entity_ids"],
+        known_true_triples=shared_data["training_negative_filter"],
+    )
+    train_batch_sampler = GroupedNegativeBatchSampler(
+        train_dataset,
+        batch_size=args.batch_size,
+        generator=train_generator,
     )
     train_loader = DataLoader(
         train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
+        batch_sampler=train_batch_sampler,
         num_workers=args.num_workers,
-        generator=train_generator,
         collate_fn=lambda batch: collate_text(
             batch,
             tokenizer,
             args.max_seq_length,
         ),
+    )
+    print(
+        f"trial={trial['trial_id']} "
+        f"negative_group_size={train_batch_sampler.group_size} "
+        f"positive_groups_per_batch={train_batch_sampler.groups_per_batch} "
+        f"effective_batch_size="
+        f"{train_batch_sampler.group_size * train_batch_sampler.groups_per_batch}"
     )
     optimizer = torch.optim.Adam(
         [
@@ -530,6 +603,10 @@ def train_trial(
             {
                 "params": model.kge_model.parameters(),
                 "lr": hyperparameters["kge_lr"],
+            },
+            {
+                "params": model.calibration_parameters(),
+                "lr": args.calibration_lr,
             },
             {
                 "params": [model.lambda_logit],
@@ -543,6 +620,7 @@ def train_trial(
     best_metrics = None
     best_epoch = None
     best_final_lambda = None
+    best_calibration = None
     evaluations_without_improvement = 0
     history = []
     epochs_ran = 0
@@ -569,14 +647,21 @@ def train_trial(
                 indexed_triples=indexed_triples,
                 **batch,
             )
-            loss = F.binary_cross_entropy_with_logits(logits, labels)
+            loss = negative_sampling_bce_loss(
+                logits,
+                labels,
+                args.negative_ratio,
+                weighting=args.negative_loss_weighting,
+            )
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            post_kge_parameter_update(model.kge_model)
             losses.append(float(loss.detach().cpu()))
 
         mean_loss = sum(losses) / max(len(losses), 1)
         lambda_value = float(model.mixing_weight.detach().cpu())
+        calibration_state = model.calibration_state()
         should_evaluate = (
             epoch % args.eval_every == 0
             or epoch == args.num_epochs
@@ -585,6 +670,7 @@ def train_trial(
             "epoch": epoch,
             "train_loss": mean_loss,
             "lambda": lambda_value,
+            **calibration_state,
             "validation_metrics": None,
         }
 
@@ -610,6 +696,7 @@ def train_trial(
                 best_metrics = validation_metrics
                 best_epoch = epoch
                 best_final_lambda = lambda_value
+                best_calibration = dict(calibration_state)
                 checkpoint_args = dict(vars(args))
                 checkpoint_args.update(hyperparameters)
                 checkpoint_args["eval_split"] = "valid"
@@ -620,10 +707,26 @@ def train_trial(
                             name: parameter.detach().cpu().clone()
                             for name, parameter in model.state_dict().items()
                         },
+                        "metrics": best_metrics,
                         "validation_metrics": best_metrics,
+                        "best_validation_metrics": best_metrics,
                         "hyperparameters": hyperparameters,
                         "best_epoch": best_epoch,
+                        "epochs_ran": epoch,
+                        "early_stopped": False,
+                        "lambda_mode": "learned",
+                        "lambda_requires_grad": True,
+                        "configured_lambda": hyperparameters[
+                            "initial_lambda"
+                        ],
+                        "final_lambda": best_final_lambda,
                         "best_final_lambda": best_final_lambda,
+                        "selection_split": "valid",
+                        "selection_metric": "MRR",
+                        "validation_filter_scope": "train_valid_test",
+                        "negative_batching": "positive_groups",
+                        "fusion_calibration": "affine_v1",
+                        "calibration": best_calibration,
                         "args": checkpoint_args,
                     },
                 )
@@ -644,6 +747,8 @@ def train_trial(
                 f"loss={mean_loss:.6f} "
                 f"valid_mrr={validation_mrr:.6f} "
                 f"lambda={lambda_value:.6f} "
+                f"kge_scale={calibration_state['kge_scale']:.6f} "
+                f"kge_bias={calibration_state['kge_bias']:.6f} "
                 f"patience={evaluations_without_improvement}/"
                 f"{args.early_stopping_patience}"
             )
@@ -651,7 +756,9 @@ def train_trial(
             print(
                 f"trial={trial['trial_id']} epoch={epoch} "
                 f"loss={mean_loss:.6f} "
-                f"lambda={lambda_value:.6f}"
+                f"lambda={lambda_value:.6f} "
+                f"kge_scale={calibration_state['kge_scale']:.6f} "
+                f"kge_bias={calibration_state['kge_bias']:.6f}"
             )
 
         history.append(epoch_record)
@@ -681,6 +788,7 @@ def train_trial(
         "early_stopped": epochs_ran < args.num_epochs,
         "best_validation_metrics": best_metrics,
         "best_final_lambda": best_final_lambda,
+        "best_calibration": best_calibration,
         "runtime_min": (
             time.perf_counter() - trial_start_time
         ) / 60.0,
@@ -710,6 +818,14 @@ def add_run_metadata(result, args, shared_data, output_dir):
             "num_test_triples": len(shared_data["test_triples"]),
             "num_entities": len(shared_data["entities"]),
             "num_relations": len(shared_data["relations"]),
+            "num_negative_entities": len(
+                shared_data["negative_entity_ids"]
+            ),
+            "negative_filter_size": len(
+                shared_data["training_negative_filter"]
+            ),
+            "negative_batching": "positive_groups",
+            "fusion_calibration": "affine_v1",
             "final_lambda": result.get("best_final_lambda"),
             "output_dir": output_dir,
         }
@@ -765,6 +881,19 @@ def main():
         os.path.join(dataset_path, "test.txt")
     )
     entities, relations = read_support(dataset_path, support_path)
+    negative_entity_ids = training_entity_ids(train_triples, entities)
+    training_negative_filter = negative_filter_triples(
+        args.negative_filter_scope,
+        train_triples,
+        valid_triples,
+        test_triples,
+    )
+    print(
+        f"negative_entity_pool=train ({len(negative_entity_ids)}/"
+        f"{len(entities)} entities) "
+        f"negative_filter_scope={args.negative_filter_scope} "
+        f"negative_loss_weighting={args.negative_loss_weighting}"
+    )
     entity_to_idx = {
         entity_id: index
         for index, entity_id in enumerate(entities)
@@ -791,6 +920,8 @@ def main():
             | set(valid_triples)
             | set(test_triples)
         ),
+        "negative_entity_ids": negative_entity_ids,
+        "training_negative_filter": training_negative_filter,
         "entities": entities,
         "relations": relations,
         "entity_to_idx": entity_to_idx,
@@ -884,6 +1015,7 @@ def main():
                 "early_stopped": None,
                 "best_validation_metrics": None,
                 "best_final_lambda": None,
+                "best_calibration": None,
                 "runtime_min": (
                     time.perf_counter() - trial_start_time
                 ) / 60.0,

@@ -21,11 +21,19 @@ from transformers import BertTokenizer
 from dicee.scripts.bert_bce_link_prediction import (
     BertTripleClassifier,
     add_nbert_tokens,
+    atomic_json_save,
+    atomic_torch_save,
+    create_unique_output_dir,
     dataset_run_name,
+    evaluation_fingerprint,
+    load_evaluation_progress,
+    load_torch_checkpoint,
     rank_of_target,
+    ranks_to_metrics,
     read_support,
     read_triples,
     resolve_path,
+    save_evaluation_progress,
     triple_prompt,
 )
 
@@ -158,19 +166,37 @@ def evaluate_link_prediction(
     device,
     max_seq_length,
     candidate_batch_size,
+    progress_description="Evaluating BERT-only BCE MRR",
+    checkpoint_path=None,
+    checkpoint_every=1,
 ):
     """Evaluate filtered head and tail prediction with BERT-only scores."""
+    if checkpoint_every < 1:
+        raise ValueError("checkpoint_every must be at least 1.")
     entity_ids = list(entities.keys())
     entity_to_position = {
         entity_id: index
         for index, entity_id in enumerate(entity_ids)
     }
-    ranks = []
+    fingerprint = evaluation_fingerprint(eval_triples, entity_ids)
+    ranks, next_triple_index = load_evaluation_progress(
+        checkpoint_path,
+        fingerprint,
+        len(eval_triples),
+    )
+    if next_triple_index:
+        print(
+            f"resuming_evaluation={checkpoint_path} "
+            f"completed_triples={next_triple_index}/{len(eval_triples)}"
+        )
 
-    for head, relation, tail in tqdm(
-        eval_triples,
-        desc="Evaluating BERT-only BCE MRR",
+    for triple_index in tqdm(
+        range(next_triple_index, len(eval_triples)),
+        desc=progress_description,
+        initial=next_triple_index,
+        total=len(eval_triples),
     ):
+        head, relation, tail = eval_triples[triple_index]
         tail_candidates = [
             (head, relation, candidate_tail)
             for candidate_tail in entity_ids
@@ -241,13 +267,20 @@ def evaluate_link_prediction(
             )
         )
 
-    ranks = torch.tensor(ranks, dtype=torch.float)
-    return {
-        "MRR": float((1.0 / ranks).mean().item()),
-        "H@1": float((ranks <= 1).float().mean().item()),
-        "H@3": float((ranks <= 3).float().mean().item()),
-        "H@10": float((ranks <= 10).float().mean().item()),
-    }
+        next_triple_index = triple_index + 1
+        if (
+            next_triple_index % checkpoint_every == 0
+            or next_triple_index == len(eval_triples)
+        ):
+            save_evaluation_progress(
+                checkpoint_path,
+                fingerprint,
+                next_triple_index,
+                len(eval_triples),
+                ranks,
+            )
+
+    return ranks_to_metrics(ranks)
 
 
 def parse_args():
@@ -290,12 +323,37 @@ def parse_args():
         default="test",
         choices=["valid", "test"],
     )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Run directory. A unique directory is created when omitted.",
+    )
+    parser.add_argument(
+        "--resume_from_checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Resume from a training_state.pt file or the run directory "
+            "containing it."
+        ),
+    )
+    parser.add_argument(
+        "--eval_checkpoint_every",
+        type=int,
+        default=1,
+        help="Save evaluation ranks after this many completed triples.",
+    )
     return parser.parse_args()
 
 
 def main():
     """Train BERT with BCE, evaluate link prediction, and save the run."""
     args = parse_args()
+    if args.num_epochs < 1:
+        raise ValueError("--num_epochs must be at least 1.")
+    if args.eval_checkpoint_every < 1:
+        raise ValueError("--eval_checkpoint_every must be at least 1.")
     run_start_time = time.perf_counter()
     repo_root = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..")
@@ -308,13 +366,57 @@ def main():
     )
     bert_model_path = resolve_path(repo_root, args.bert_model_path)
     dataset_name = dataset_run_name(args.dataset_path)
-    run_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(
-        repo_root,
-        "bert_bce_runs",
-        f"{dataset_name}_only_bert_{args.eval_split}_{run_datetime}",
+    run_datetime = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
+    base_output_dir = os.path.join(repo_root, "bert_bce_runs")
+    run_name = (
+        f"{dataset_name}_only_bert_{args.eval_split}_{run_datetime}"
     )
-    os.makedirs(output_dir, exist_ok=True)
+    resume_checkpoint_path = None
+    resume_state = None
+    if args.resume_from_checkpoint:
+        resume_checkpoint_path = resolve_path(
+            repo_root,
+            args.resume_from_checkpoint,
+        )
+        if os.path.isdir(resume_checkpoint_path):
+            resume_checkpoint_path = os.path.join(
+                resume_checkpoint_path,
+                "training_state.pt",
+            )
+        if not os.path.isfile(resume_checkpoint_path):
+            raise FileNotFoundError(
+                f"Resume checkpoint not found: {resume_checkpoint_path}"
+            )
+        resume_state = load_torch_checkpoint(resume_checkpoint_path)
+        output_dir = os.path.dirname(resume_checkpoint_path)
+        if args.output_dir:
+            requested_output_dir = resolve_path(repo_root, args.output_dir)
+            if os.path.abspath(requested_output_dir) != os.path.abspath(output_dir):
+                raise ValueError(
+                    "--output_dir must match the directory containing "
+                    "--resume_from_checkpoint."
+                )
+    elif args.output_dir:
+        output_dir = resolve_path(repo_root, args.output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        if os.path.exists(os.path.join(output_dir, "training_state.pt")):
+            raise FileExistsError(
+                f"{output_dir} already contains training_state.pt; pass "
+                "--resume_from_checkpoint to resume it."
+            )
+    else:
+        output_dir = create_unique_output_dir(base_output_dir, run_name)
+
+    training_state_path = os.path.join(output_dir, "training_state.pt")
+    model_checkpoint_path = os.path.join(
+        output_dir,
+        "bert_bce_link_prediction.pt",
+    )
+    evaluation_progress_path = os.path.join(
+        output_dir,
+        f"{args.eval_split}_evaluation_progress.pt",
+    )
+    print(f"run_output_dir={output_dir}")
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -363,7 +465,87 @@ def main():
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    for epoch in range(1, args.num_epochs + 1):
+    epoch_completed = 0
+    training_history = []
+    if resume_state is not None:
+        if resume_state.get("version") != 1:
+            raise ValueError(
+                f"Unsupported training checkpoint version in "
+                f"{resume_checkpoint_path}: {resume_state.get('version')!r}"
+            )
+        saved_args = resume_state.get("args", {})
+        ignored_resume_args = {
+            "candidate_batch_size",
+            "device",
+            "eval_checkpoint_every",
+            "num_workers",
+            "output_dir",
+            "resume_from_checkpoint",
+        }
+        mismatches = [
+            name
+            for name, value in vars(args).items()
+            if name not in ignored_resume_args
+            and name in saved_args
+            and saved_args[name] != value
+        ]
+        if mismatches:
+            details = ", ".join(
+                f"{name}: saved={saved_args[name]!r}, current="
+                f"{getattr(args, name)!r}"
+                for name in mismatches
+            )
+            raise ValueError(
+                f"Resume arguments do not match the checkpoint ({details})."
+            )
+        model.load_state_dict(resume_state["model_state_dict"])
+        optimizer.load_state_dict(resume_state["optimizer_state_dict"])
+        epoch_completed = resume_state["epoch_completed"]
+        training_history = resume_state["training_history"]
+        random.setstate(resume_state["python_random_state"])
+        torch.set_rng_state(resume_state["torch_random_state"])
+        if (
+            torch.cuda.is_available()
+            and resume_state.get("cuda_random_state") is not None
+        ):
+            torch.cuda.set_rng_state_all(resume_state["cuda_random_state"])
+        print(
+            f"resumed_training_checkpoint={resume_checkpoint_path} "
+            f"phase={resume_state['phase']} "
+            f"epoch_completed={epoch_completed}"
+        )
+
+    tokenizer.save_pretrained(output_dir)
+
+    def save_training_state(phase):
+        atomic_torch_save(
+            training_state_path,
+            {
+                "version": 1,
+                "phase": phase,
+                "epoch_completed": epoch_completed,
+                "model_state_dict": {
+                    name: value.detach().cpu()
+                    for name, value in model.state_dict().items()
+                },
+                "optimizer_state_dict": optimizer.state_dict(),
+                "training_history": training_history,
+                "args": vars(args),
+                "python_random_state": random.getstate(),
+                "torch_random_state": torch.get_rng_state(),
+                "cuda_random_state": (
+                    torch.cuda.get_rng_state_all()
+                    if torch.cuda.is_available()
+                    else None
+                ),
+            },
+        )
+        print(
+            f"saved_training_checkpoint={training_state_path} "
+            f"phase={phase} epoch={epoch_completed}"
+        )
+
+    for epoch in range(epoch_completed + 1, args.num_epochs + 1):
         model.train()
         losses = []
         for batch in tqdm(train_loader, desc=f"Epoch {epoch}"):
@@ -384,6 +566,16 @@ def main():
 
         mean_loss = sum(losses) / max(len(losses), 1)
         print(f"epoch={epoch} loss={mean_loss:.6f}")
+        epoch_completed = epoch
+        training_history.append(
+            {
+                "epoch": epoch,
+                "loss": mean_loss,
+            }
+        )
+        save_training_state("training")
+
+    save_training_state("training_complete")
 
     eval_triples = (
         valid_triples
@@ -405,6 +597,8 @@ def main():
         device=device,
         max_seq_length=args.max_seq_length,
         candidate_batch_size=args.candidate_batch_size,
+        checkpoint_path=evaluation_progress_path,
+        checkpoint_every=args.eval_checkpoint_every,
     )
     print(json.dumps(metrics, indent=2))
 
@@ -421,29 +615,26 @@ def main():
         "num_test_triples": len(test_triples),
         "num_entities": len(entities),
         "num_relations": len(relations),
+        "training_history": training_history,
         "output_dir": output_dir,
         "runtime_min": runtime_min,
     }
-    with open(
+    atomic_json_save(
         os.path.join(output_dir, "results.json"),
-        "w",
-        encoding="utf-8",
-    ) as handle:
-        json.dump(results, handle, indent=2)
+        results,
+    )
 
-    torch.save(
+    atomic_torch_save(
+        model_checkpoint_path,
         {
             "model_state_dict": model.state_dict(),
             "metrics": metrics,
             "args": vars(args),
+            "training_history": training_history,
         },
-        os.path.join(
-            output_dir,
-            "bert_bce_link_prediction.pt",
-        ),
     )
-    tokenizer.save_pretrained(output_dir)
 
+    print(f"checkpoint_dir={output_dir}")
     print(f"runtime_minutes={runtime_min:.2f}")
 
 
