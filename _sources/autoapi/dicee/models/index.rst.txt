@@ -16,15 +16,21 @@ Submodules
    /autoapi/dicee/models/complex/index
    /autoapi/dicee/models/dualE/index
    /autoapi/dicee/models/ensemble/index
+   /autoapi/dicee/models/flock/index
+   /autoapi/dicee/models/flock_walks/index
    /autoapi/dicee/models/fsdp_models/index
    /autoapi/dicee/models/function_space/index
+   /autoapi/dicee/models/graph_model/index
    /autoapi/dicee/models/literal/index
    /autoapi/dicee/models/octonion/index
    /autoapi/dicee/models/pykeen_models/index
    /autoapi/dicee/models/quaternion/index
    /autoapi/dicee/models/real/index
+   /autoapi/dicee/models/sampled_loss/index
    /autoapi/dicee/models/static_funcs/index
    /autoapi/dicee/models/transformers/index
+   /autoapi/dicee/models/trix/index
+   /autoapi/dicee/models/ultra/index
 
 
 Attributes
@@ -84,6 +90,11 @@ Classes
    dicee.models.LFMult1
    dicee.models.LFMult
    dicee.models.DualE
+   dicee.models.ULTRA
+   dicee.models.TRIX
+   dicee.models.TRIXRelation
+   dicee.models.Flock
+   dicee.models.FlockRelation
 
 
 Functions
@@ -309,6 +320,14 @@ Package Contents
    :class:`BaseKGE` rather than this class directly.
 
 
+   .. py:attribute:: args
+      :type:  Dict[str, Any]
+
+
+   .. py:attribute:: loss
+      :type:  torch.nn.Module
+
+
    .. py:attribute:: training_step_outputs
       :value: []
 
@@ -338,7 +357,7 @@ Package Contents
 
 
 
-   .. py:method:: loss_function(yhat_batch: torch.FloatTensor, y_batch: torch.FloatTensor) -> torch.FloatTensor
+   .. py:method:: loss_function(yhat_batch: torch.Tensor, y_batch: torch.Tensor) -> torch.Tensor
 
       Compute the loss between model predictions and targets.
 
@@ -553,11 +572,13 @@ Package Contents
 
 
    .. py:attribute:: num_entities
+      :type:  Optional[int]
       :value: None
 
 
 
    .. py:attribute:: num_relations
+      :type:  Optional[int]
       :value: None
 
 
@@ -666,6 +687,34 @@ Package Contents
    .. py:attribute:: defer_large_embeddings
 
 
+   .. py:method:: init_entity_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the entity embedding table.
+
+      This is the single place that honours :attr:`defer_large_embeddings`:
+      when entity rows are sharded across FSDP ranks the table must stay
+      ``None`` until the trainer allocates the sharded adapter.  Subclasses
+      that need an entity table of a non-default width must call this method
+      instead of assigning ``self.entity_embeddings`` directly, so the
+      deferral is never silently undone.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
+   .. py:method:: init_relation_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the relation embedding table.
+
+      Relation tables are never deferred - they are small enough to be
+      replicated on every rank.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
    .. py:method:: forward_byte_pair_encoded_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
 
       KvsAll scoring for BPE-encoded head entities and relations.
@@ -711,7 +760,7 @@ Package Contents
 
 
 
-   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: torch.LongTensor = None) -> torch.FloatTensor
+   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: Optional[torch.LongTensor] = None) -> torch.Tensor
 
       Route the forward pass to the appropriate scoring method.
 
@@ -954,11 +1003,13 @@ Package Contents
 
 
    .. py:attribute:: num_entities
+      :type:  Optional[int]
       :value: None
 
 
 
    .. py:attribute:: num_relations
+      :type:  Optional[int]
       :value: None
 
 
@@ -1067,6 +1118,34 @@ Package Contents
    .. py:attribute:: defer_large_embeddings
 
 
+   .. py:method:: init_entity_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the entity embedding table.
+
+      This is the single place that honours :attr:`defer_large_embeddings`:
+      when entity rows are sharded across FSDP ranks the table must stay
+      ``None`` until the trainer allocates the sharded adapter.  Subclasses
+      that need an entity table of a non-default width must call this method
+      instead of assigning ``self.entity_embeddings`` directly, so the
+      deferral is never silently undone.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
+   .. py:method:: init_relation_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the relation embedding table.
+
+      Relation tables are never deferred - they are small enough to be
+      replicated on every rank.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
    .. py:method:: forward_byte_pair_encoded_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
 
       KvsAll scoring for BPE-encoded head entities and relations.
@@ -1112,7 +1191,7 @@ Package Contents
 
 
 
-   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: torch.LongTensor = None) -> torch.FloatTensor
+   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: Optional[torch.LongTensor] = None) -> torch.Tensor
 
       Route the forward pass to the appropriate scoring method.
 
@@ -1362,8 +1441,6 @@ Package Contents
 
 
    .. py:attribute:: margin
-      :value: 4
-
 
 
    .. py:method:: score(head_ent_emb: torch.FloatTensor, rel_ent_emb: torch.FloatTensor, tail_ent_emb: torch.FloatTensor) -> torch.FloatTensor
@@ -1414,7 +1491,7 @@ Package Contents
 
        h_r = h - (r_w^T h) * r_w
        t_r = t - (r_w^T t) * r_w
-       f(h, r, t) = -||h_r + r_d - t_r||_2^2
+       f(h, r, t) = margin - ||h_r + r_d - t_r||_2^2
 
    ``r_w`` reuses the inherited ``relation_embeddings`` table and is
    normalised to unit norm before every use, since only a unit-norm normal
@@ -1432,6 +1509,9 @@ Package Contents
    .. py:attribute:: name
       :value: 'TransH'
 
+
+
+   .. py:attribute:: margin
 
 
    .. py:attribute:: relation_normal_translations
@@ -1653,8 +1733,6 @@ Package Contents
 
 
    .. py:attribute:: margin
-      :value: 1.0
-
 
 
    .. py:method:: forward_triples(x: torch.LongTensor) -> torch.FloatTensor
@@ -1855,11 +1933,13 @@ Package Contents
 
 
    .. py:attribute:: num_entities
+      :type:  Optional[int]
       :value: None
 
 
 
    .. py:attribute:: num_relations
+      :type:  Optional[int]
       :value: None
 
 
@@ -1968,6 +2048,34 @@ Package Contents
    .. py:attribute:: defer_large_embeddings
 
 
+   .. py:method:: init_entity_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the entity embedding table.
+
+      This is the single place that honours :attr:`defer_large_embeddings`:
+      when entity rows are sharded across FSDP ranks the table must stay
+      ``None`` until the trainer allocates the sharded adapter.  Subclasses
+      that need an entity table of a non-default width must call this method
+      instead of assigning ``self.entity_embeddings`` directly, so the
+      deferral is never silently undone.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
+   .. py:method:: init_relation_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the relation embedding table.
+
+      Relation tables are never deferred - they are small enough to be
+      replicated on every rank.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
    .. py:method:: forward_byte_pair_encoded_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
 
       KvsAll scoring for BPE-encoded head entities and relations.
@@ -2013,7 +2121,7 @@ Package Contents
 
 
 
-   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: torch.LongTensor = None) -> torch.FloatTensor
+   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: Optional[torch.LongTensor] = None) -> torch.Tensor
 
       Route the forward pass to the appropriate scoring method.
 
@@ -2403,8 +2511,6 @@ Package Contents
 
 
    .. py:attribute:: margin
-      :value: 6.0
-
 
 
    .. py:attribute:: half_dim
@@ -2494,11 +2600,13 @@ Package Contents
 
 
    .. py:attribute:: num_entities
+      :type:  Optional[int]
       :value: None
 
 
 
    .. py:attribute:: num_relations
+      :type:  Optional[int]
       :value: None
 
 
@@ -2607,6 +2715,34 @@ Package Contents
    .. py:attribute:: defer_large_embeddings
 
 
+   .. py:method:: init_entity_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the entity embedding table.
+
+      This is the single place that honours :attr:`defer_large_embeddings`:
+      when entity rows are sharded across FSDP ranks the table must stay
+      ``None`` until the trainer allocates the sharded adapter.  Subclasses
+      that need an entity table of a non-default width must call this method
+      instead of assigning ``self.entity_embeddings`` directly, so the
+      deferral is never silently undone.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
+   .. py:method:: init_relation_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the relation embedding table.
+
+      Relation tables are never deferred - they are small enough to be
+      replicated on every rank.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
    .. py:method:: forward_byte_pair_encoded_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
 
       KvsAll scoring for BPE-encoded head entities and relations.
@@ -2652,7 +2788,7 @@ Package Contents
 
 
 
-   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: torch.LongTensor = None) -> torch.FloatTensor
+   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: Optional[torch.LongTensor] = None) -> torch.Tensor
 
       Route the forward pass to the appropriate scoring method.
 
@@ -3074,11 +3210,13 @@ Package Contents
 
 
    .. py:attribute:: num_entities
+      :type:  Optional[int]
       :value: None
 
 
 
    .. py:attribute:: num_relations
+      :type:  Optional[int]
       :value: None
 
 
@@ -3187,6 +3325,34 @@ Package Contents
    .. py:attribute:: defer_large_embeddings
 
 
+   .. py:method:: init_entity_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the entity embedding table.
+
+      This is the single place that honours :attr:`defer_large_embeddings`:
+      when entity rows are sharded across FSDP ranks the table must stay
+      ``None`` until the trainer allocates the sharded adapter.  Subclasses
+      that need an entity table of a non-default width must call this method
+      instead of assigning ``self.entity_embeddings`` directly, so the
+      deferral is never silently undone.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
+   .. py:method:: init_relation_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the relation embedding table.
+
+      Relation tables are never deferred - they are small enough to be
+      replicated on every rank.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
    .. py:method:: forward_byte_pair_encoded_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
 
       KvsAll scoring for BPE-encoded head entities and relations.
@@ -3232,7 +3398,7 @@ Package Contents
 
 
 
-   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: torch.LongTensor = None) -> torch.FloatTensor
+   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: Optional[torch.LongTensor] = None) -> torch.Tensor
 
       Route the forward pass to the appropriate scoring method.
 
@@ -3891,12 +4057,6 @@ Package Contents
 
 
 
-   .. py:attribute:: entity_embeddings
-
-
-   .. py:attribute:: relation_embeddings
-
-
    .. py:attribute:: p
 
 
@@ -4202,11 +4362,13 @@ Package Contents
 
 
    .. py:attribute:: num_entities
+      :type:  Optional[int]
       :value: None
 
 
 
    .. py:attribute:: num_relations
+      :type:  Optional[int]
       :value: None
 
 
@@ -4315,6 +4477,34 @@ Package Contents
    .. py:attribute:: defer_large_embeddings
 
 
+   .. py:method:: init_entity_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the entity embedding table.
+
+      This is the single place that honours :attr:`defer_large_embeddings`:
+      when entity rows are sharded across FSDP ranks the table must stay
+      ``None`` until the trainer allocates the sharded adapter.  Subclasses
+      that need an entity table of a non-default width must call this method
+      instead of assigning ``self.entity_embeddings`` directly, so the
+      deferral is never silently undone.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
+   .. py:method:: init_relation_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the relation embedding table.
+
+      Relation tables are never deferred - they are small enough to be
+      replicated on every rank.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
    .. py:method:: forward_byte_pair_encoded_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
 
       KvsAll scoring for BPE-encoded head entities and relations.
@@ -4360,7 +4550,7 @@ Package Contents
 
 
 
-   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: torch.LongTensor = None) -> torch.FloatTensor
+   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: Optional[torch.LongTensor] = None) -> torch.Tensor
 
       Route the forward pass to the appropriate scoring method.
 
@@ -4628,11 +4818,13 @@ Package Contents
 
 
    .. py:attribute:: num_entities
+      :type:  Optional[int]
       :value: None
 
 
 
    .. py:attribute:: num_relations
+      :type:  Optional[int]
       :value: None
 
 
@@ -4741,6 +4933,34 @@ Package Contents
    .. py:attribute:: defer_large_embeddings
 
 
+   .. py:method:: init_entity_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the entity embedding table.
+
+      This is the single place that honours :attr:`defer_large_embeddings`:
+      when entity rows are sharded across FSDP ranks the table must stay
+      ``None`` until the trainer allocates the sharded adapter.  Subclasses
+      that need an entity table of a non-default width must call this method
+      instead of assigning ``self.entity_embeddings`` directly, so the
+      deferral is never silently undone.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
+   .. py:method:: init_relation_embeddings(embedding_dim: Optional[int] = None) -> None
+
+      Create (or re-create) the relation embedding table.
+
+      Relation tables are never deferred - they are small enough to be
+      replicated on every rank.
+
+      :param embedding_dim: Width of the table.  Defaults to :attr:`embedding_dim`.
+      :type embedding_dim: Optional[int]
+
+
+
    .. py:method:: forward_byte_pair_encoded_k_vs_all(x: torch.LongTensor) -> torch.FloatTensor
 
       KvsAll scoring for BPE-encoded head entities and relations.
@@ -4786,7 +5006,7 @@ Package Contents
 
 
 
-   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: torch.LongTensor = None) -> torch.FloatTensor
+   .. py:method:: forward(x: Union[torch.LongTensor, Tuple[torch.LongTensor, torch.LongTensor]], y_idx: Optional[torch.LongTensor] = None) -> torch.Tensor
 
       Route the forward pass to the appropriate scoring method.
 
@@ -5329,6 +5549,160 @@ Package Contents
 
       Input: Tensor with shape (nxm)
       Output: Tensor with shape (mxn)
+
+
+
+.. py:class:: ULTRA(args)
+
+   Bases: :py:obj:`dicee.models.graph_model.GraphKGE`
+
+
+   Pure PyTorch ULTRA with the official state dictionary and DICE triple order.
+
+
+   .. py:attribute:: name
+      :value: 'ULTRA'
+
+
+
+   .. py:attribute:: config_prefix
+      :value: 'ultra'
+
+
+
+   .. py:attribute:: graph_filename
+      :value: 'ultra_graph.pt'
+
+
+
+   .. py:attribute:: checkpoint_hint
+      :value: 'official ULTRA requires ultra_dim=64, ultra_num_layers=6; all keys and shapes must match'
+
+
+
+   .. py:attribute:: deterministic_inference
+      :value: True
+
+
+
+   .. py:attribute:: dim
+
+
+   .. py:attribute:: num_layers
+
+
+   .. py:attribute:: relation_model
+
+
+   .. py:attribute:: entity_model
+
+
+   .. py:attribute:: relation_cache_mb
+
+
+   .. py:attribute:: projection_cache_mb
+
+
+   .. py:method:: clear_inference_cache()
+
+      Drop derived representations when graph, weights or device change.
+
+
+
+.. py:class:: TRIX(args)
+
+   Bases: :py:obj:`TRIXBase`
+
+
+   Entity predictor compatible with official ``entity_prediction.pth``.
+
+   DICE order is (head, relation, tail). Head corruption retains the original
+   relation seed, then uses the inverse relation for both entity reasoners.
+   Explicit reciprocal DICE queries use that same convention.
+
+
+   .. py:attribute:: name
+      :value: 'TRIX'
+
+
+
+   .. py:attribute:: deterministic_inference
+      :value: True
+
+
+
+   .. py:attribute:: relation_model
+
+
+   .. py:attribute:: entity_model_1
+
+
+   .. py:attribute:: entity_model_2
+
+
+   .. py:attribute:: relation_cache_mb
+
+
+   .. py:method:: clear_inference_cache()
+
+      Drop derived representations when graph, weights or device change.
+
+
+
+.. py:class:: TRIXRelation(args)
+
+   Bases: :py:obj:`TRIXBase`, :py:obj:`dicee.models.graph_model.RelationGraphKGE`
+
+
+   Relation predictor compatible with official ``relation_prediction.pth``.
+
+   Pairs are (head, tail); triples and grouped relation corruptions use DICE's
+   (head, relation, tail) order. One reasoning pass scores every relation for a
+   given pair, including external inverse IDs when present in the vocabulary.
+
+
+   .. py:attribute:: name
+      :value: 'TRIXRelation'
+
+
+
+   .. py:attribute:: relation_model
+
+
+   .. py:attribute:: entity_model
+
+
+   .. py:attribute:: mlp
+
+
+.. py:class:: Flock(args)
+
+   Bases: :py:obj:`FlockBase`
+
+
+   Entity-prediction Flock with official ``flock_entity.pth`` parameters.
+
+
+   .. py:attribute:: name
+      :value: 'Flock'
+
+
+
+.. py:class:: FlockRelation(args)
+
+   Bases: :py:obj:`FlockBase`, :py:obj:`dicee.models.graph_model.RelationGraphKGE`
+
+
+   Relation-prediction Flock with official ``flock_relation.pth`` parameters.
+
+
+   .. py:attribute:: name
+      :value: 'FlockRelation'
+
+
+
+   .. py:attribute:: relation_prediction
+      :value: True
 
 
 

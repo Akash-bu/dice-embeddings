@@ -105,8 +105,8 @@
 <h2>Current Status<a class="headerlink" href="#current-status" title="Link to this heading"></a></h2>
 <p><strong>mypy Results:</strong></p>
 <ul class="simple">
-<li><p><strong>Total errors</strong>: 1358 type issues across 47 files (<code class="docutils literal notranslate"><span class="pre">mypy</span> <span class="pre">dicee/</span> <span class="pre">--config-file=pyproject.toml</span></code>)</p></li>
-<li><p><strong>CI status</strong>: Non-blocking (<code class="docutils literal notranslate"><span class="pre">continue-on-error:</span> <span class="pre">true</span></code> in <code class="docutils literal notranslate"><span class="pre">.github/workflows/github-actions-python-package.yml</span></code>) — errors are visible in CI logs but don’t fail the build</p></li>
+<li><p><strong>CI error budget</strong>: 1367 type issues, recorded in <code class="docutils literal notranslate"><span class="pre">.github/mypy-baseline.txt</span></code>. Run <code class="docutils literal notranslate"><span class="pre">mypy</span> <span class="pre">dicee/</span> <span class="pre">--config-file=pyproject.toml</span></code> to measure the current count.</p></li>
+<li><p><strong>CI status</strong>: The mypy step blocks the build when its error count exceeds that budget. Existing errors are printed in the log even when the step passes; lint and runtime tests are separate checks.</p></li>
 <li><p><strong>Coverage</strong>: partial; growing gradually per the tiers below</p></li>
 </ul>
 </section>
@@ -187,7 +187,7 @@
 <section id="phase-1-foundation-this-pr">
 <h3>Phase 1: Foundation (This PR)<a class="headerlink" href="#phase-1-foundation-this-pr" title="Link to this heading"></a></h3>
 <ul class="simple">
-<li><p>[ ] Make mypy blocking in CI (still <code class="docutils literal notranslate"><span class="pre">continue-on-error:</span> <span class="pre">true</span></code>; blocking now would fail the build on 1358 pre-existing errors)</p></li>
+<li><p>[x] Enforce a mypy error-count budget in CI while existing typing issues are fixed</p></li>
 <li><p>[x] Create this roadmap</p></li>
 <li><p>[x] Fix config.py Optional types (quick win)</p></li>
 <li><p>[ ] Add py.typed marker to package</p></li>
@@ -226,24 +226,24 @@
 <span class="c1"># Tier 1: Strict enforcement</span>
 <span class="k">[[tool.mypy.overrides]]</span>
 <span class="n">module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
-<span class="w">  </span><span class="s2">&quot;dicee.knowledge_graph_embeddings&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="s2">&quot;dicee.config&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="s2">&quot;dicee.executer&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">"dicee.knowledge_graph_embeddings"</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">"dicee.config"</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">"dicee.executer"</span><span class="p">,</span>
 <span class="p">]</span>
 <span class="n">disallow_untyped_defs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">        </span><span class="c1"># Functions must be typed</span>
 
 <span class="c1"># Tier 2: Relaxed for now (warnings only)</span>
 <span class="k">[[tool.mypy.overrides]]</span>
 <span class="n">module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
-<span class="w">  </span><span class="s2">&quot;dicee.trainer.*&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="s2">&quot;dicee.models.*&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">"dicee.trainer.*"</span><span class="p">,</span>
+<span class="w">  </span><span class="s2">"dicee.models.*"</span><span class="p">,</span>
 <span class="p">]</span>
 <span class="n">disallow_untyped_defs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">       </span><span class="c1"># Warnings but not required</span>
 <span class="n">warn_return_any</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
 
 <span class="c1"># Tier 3: Scripts (pass for now)</span>
 <span class="k">[[tool.mypy.overrides]]</span>
-<span class="n">module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;dicee.scripts.*&quot;</span>
+<span class="n">module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"dicee.scripts.*"</span>
 <span class="n">ignore_errors</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">               </span><span class="c1"># Revisit later</span>
 </pre></div>
 </div>
@@ -252,7 +252,7 @@
 <section id="file-tracker">
 <h2>File Tracker<a class="headerlink" href="#file-tracker" title="Link to this heading"></a></h2>
 <p>Run this to see current state:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mypy<span class="w"> </span>dicee/<span class="w"> </span>--config-file<span class="o">=</span>pyproject.toml<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;error:&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span><span class="p">|</span><span class="w"> </span>uniq<span class="w"> </span>-c<span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-rn
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mypy<span class="w"> </span>dicee/<span class="w"> </span>--config-file<span class="o">=</span>pyproject.toml<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">"error:"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span><span class="p">|</span><span class="w"> </span>uniq<span class="w"> </span>-c<span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-rn
 </pre></div>
 </div>
 </section>
